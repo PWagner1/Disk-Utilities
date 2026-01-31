@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.Management;
 using System.Security.Cryptography;
-using DriveWiper.Models;
+using DiskEraser.Models;
 
-namespace DriveWiper.Services;
+namespace DiskEraser.Services;
 
 /// <summary>
 /// Service for enumerating logical drives and formatting volumes via WMI (Win32_Volume).
@@ -447,6 +447,135 @@ public static class DriveService
         }
     }
 
+    /// <summary>Runs a diskpart script (one command per line). Returns true if exit code 0.</summary>
+    public static bool RunDiskPartScript(IEnumerable<string> commands, out string output)
+    {
+        output = string.Empty;
+        try
+        {
+            string diskpartPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "diskpart.exe");
+            if (!File.Exists(diskpartPath))
+                return false;
+            string script = string.Join("\r\n", commands) + "\r\n";
+            var scriptPath = Path.Combine(Path.GetTempPath(), $"dw_script_{Guid.NewGuid():N}.txt");
+            File.WriteAllText(scriptPath, script);
+            try
+            {
+                using var p = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = diskpartPath,
+                        Arguments = $"/s \"{scriptPath}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    }
+                };
+                p.Start();
+                output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+                p.WaitForExit(30000);
+                return p.ExitCode == 0;
+            }
+            finally
+            {
+                try { File.Delete(scriptPath); } catch { /* ignore */ }
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Elevation required (e.g. "The requested operation requires elevation")
+            output = "Administrator rights required.";
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Creates a primary partition on the given disk. Size in MB; 0 = use all unallocated. May require administrator.</summary>
+    public static bool CreatePartition(int diskIndex, uint sizeMB)
+    {
+        var commands = new List<string> { $"select disk {diskIndex}" };
+        if (sizeMB > 0)
+            commands.Add($"create partition primary size={sizeMB}");
+        else
+            commands.Add("create partition primary");
+        return RunDiskPartScript(commands, out _);
+    }
+
+    /// <summary>Deletes the given partition on the disk. May require administrator. Cannot delete system/boot partitions from user mode.</summary>
+    public static bool DeletePartition(int diskIndex, int partitionIndex)
+    {
+        int? partNum = GetPartitionNumberFromDiskPart(diskIndex, partitionIndex);
+        if (partNum == null) return false;
+        return RunDiskPartScript(new[] { $"select disk {diskIndex}", $"select partition {partNum}", "delete partition" }, out _);
+    }
+
+    /// <summary>Gets the diskpart partition number (1-based) for the given disk and 0-based partition index. Runs list partition and parses.</summary>
+    private static int? GetPartitionNumberFromDiskPart(int diskIndex, int partitionIndex)
+    {
+        if (!RunDiskPartScript(new[] { $"select disk {diskIndex}", "list partition" }, out string output))
+            return null;
+        var matches = System.Text.RegularExpressions.Regex.Matches(output, @"Partition\s+(\d+)");
+        if (partitionIndex >= 0 && partitionIndex < matches.Count)
+            return int.TryParse(matches[partitionIndex].Groups[1].Value, out int num) ? num : null;
+        return null;
+    }
+
+    /// <summary>Extends the volume by the given size in MB. If sizeMB is 0 or null, extends to use all contiguous unallocated space. May require administrator.</summary>
+    public static bool ExtendVolume(int volumeNumber, uint? sizeMB)
+    {
+        var commands = new List<string> { $"select volume {volumeNumber}" };
+        if (sizeMB.HasValue && sizeMB.Value > 0)
+            commands.Add($"extend size={sizeMB}");
+        else
+            commands.Add("extend");
+        return RunDiskPartScript(commands, out _);
+    }
+
+    /// <summary>Shrinks the volume by the desired amount in MB. May require administrator.</summary>
+    public static bool ShrinkVolume(int volumeNumber, uint desiredMB)
+    {
+        if (desiredMB == 0) return false;
+        return RunDiskPartScript(new[] { $"select volume {volumeNumber}", $"shrink desired={desiredMB}" }, out _);
+    }
+
+    /// <summary>Assigns a drive letter to a partition (by disk and partition index). May require administrator.</summary>
+    public static bool AssignLetterToPartition(int diskIndex, int partitionIndex, string letter)
+    {
+        var l = (letter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
+        if (l.Length != 1 || l[0] < 'A' || l[0] > 'Z') return false;
+        int? partNum = GetPartitionNumberFromDiskPart(diskIndex, partitionIndex);
+        if (partNum == null) return false;
+        return RunDiskPartScript(new[] { $"select disk {diskIndex}", $"select partition {partNum}", "assign letter=" + l }, out _);
+    }
+
+    /// <summary>Gets the volume number (for diskpart) for the given drive letter (e.g. "D" or "D:"). Returns null if not found.</summary>
+    public static int? GetVolumeNumberForDriveLetter(string driveLetter)
+    {
+        var letter = (driveLetter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
+        if (letter.Length != 1) return null;
+        return GetVolumeNumberFromDiskPart(GetDiskPartPath(), letter);
+    }
+
+    /// <summary>Removes the drive letter from the volume. May require administrator.</summary>
+    public static bool RemoveDriveLetter(string driveLetter)
+    {
+        var letter = (driveLetter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
+        if (letter.Length != 1 || letter == "C") return false;
+        int? volNum = GetVolumeNumberFromDiskPart(GetDiskPartPath(), letter);
+        if (volNum == null) return false;
+        return RunDiskPartScript(new[] { $"select volume {volNum}", "remove letter=" + letter }, out _);
+    }
+
+    private static string GetDiskPartPath()
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "diskpart.exe");
+    }
+
     /// <summary>Runs diskpart "list volume", parses output for the given drive letter, returns Volume ### or null.</summary>
     private static int? GetVolumeNumberFromDiskPart(string diskpartPath, string driveLetter)
     {
@@ -481,6 +610,11 @@ public static class DriveService
                         return num;
                 }
             }
+            return null;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Elevation required - diskpart needs administrator
             return null;
         }
         finally

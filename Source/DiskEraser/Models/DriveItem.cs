@@ -1,4 +1,4 @@
-namespace DriveWiper.Models;
+namespace DiskEraser.Models;
 
 /// <summary>
 /// Represents a logical drive/volume for display and formatting operations.

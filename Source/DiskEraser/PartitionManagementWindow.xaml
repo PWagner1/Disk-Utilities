@@ -1,0 +1,63 @@
+<Window
+    x:Class="DiskEraser.PartitionManagementWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Partition Management">
+
+    <Grid Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="PartitionTitleBar" Grid.Row="0" Height="48" Background="Transparent" Padding="24,0,24,0" VerticalAlignment="Top">
+            <TextBlock Text="Partition Management" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </Grid>
+
+        <Grid Grid.Row="1" Background="Transparent" Padding="24" RowSpacing="12" ColumnSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="Select a disk, then a partition or unallocated space. Many actions require administrator rights." TextWrapping="Wrap" Opacity="0.8" />
+
+            <StackPanel Grid.Row="1" Spacing="8">
+                <TextBlock Text="Disk" FontWeight="SemiBold" />
+                <ComboBox x:Name="DiskCombo" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayCaption" SelectionChanged="DiskCombo_SelectionChanged" />
+            </StackPanel>
+
+            <Grid Grid.Row="2" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="8">
+                    <TextBlock Text="Partitions and unallocated space" FontWeight="SemiBold" />
+                    <ListView x:Name="PartitionList" SelectionMode="Single" SelectionChanged="PartitionList_SelectionChanged" DisplayMemberPath="DisplayText" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Top">
+                    <TextBlock Text="Disk usage" FontWeight="SemiBold" />
+                    <Border BorderBrush="Gray" BorderThickness="1" Padding="8" CornerRadius="4" Background="#1A1A1A">
+                        <Canvas x:Name="PieChartCanvas" Width="220" Height="160" />
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+                <Button x:Name="CreatePartitionButton" Content="Create partition" Click="CreatePartitionButton_Click" />
+                <Button x:Name="DeletePartitionButton" Content="Delete partition" Click="DeletePartitionButton_Click" />
+                <Button x:Name="FormatButton" Content="Format" Click="FormatButton_Click" />
+                <Button x:Name="AssignLetterButton" Content="Assign / Change letter" Click="AssignLetterButton_Click" />
+                <Button x:Name="ExtendButton" Content="Extend" Click="ExtendButton_Click" />
+                <Button x:Name="ShrinkButton" Content="Shrink" Click="ShrinkButton_Click" />
+                <Button x:Name="RefreshButton" Content="Refresh" Click="RefreshButton_Click" />
+            </StackPanel>
+
+            <TextBlock Grid.Row="4" x:Name="StatusText" Text="" TextWrapping="Wrap" Visibility="Collapsed" />
+        </Grid>
+    </Grid>
+</Window>

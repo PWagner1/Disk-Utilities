@@ -1,6 +1,6 @@
 # Drive-Wiper
 
-A **drive formatting tool** with a WinUI 3 GUI. Format any drive (except `C:\`) with support for Windows (NTFS, FAT, exFAT, ReFS), Linux (ext2/3/4, Btrfs, XFS), and Apple (HFS, HFS+, APFS) file systems.
+A **disk formatting and partition tool** (Disk Eraser) with a WinUI 3 GUI. Format any drive (except `C:\`) with support for Windows (NTFS, FAT, exFAT, ReFS), Linux (ext2/3/4, Btrfs, XFS), and Apple (HFS, HFS+, APFS) file systems.
 
 ## Features
 
@@ -18,7 +18,7 @@ A **drive formatting tool** with a WinUI 3 GUI. Format any drive (except `C:\`) 
 
 ## Build and run
 
-1. Open `Source/DriveWiper.sln` in Visual Studio 2022.
+1. Open `Source/Disk Utilities.sln` in Visual Studio 2022.
 2. Set platform to **x64** (or x86/ARM64).
 3. Build and run (F5).
 
@@ -26,8 +26,8 @@ From command line (from repo root):
 
 ```powershell
 cd Source
-dotnet build DriveWiper.sln -c Debug -p:Platform=x64
-dotnet run --project DriveWiper --no-build
+dotnet build "Disk Utilities.sln" -c Debug -p:Platform=x64
+dotnet run --project DiskEraser --no-build
 ```
 
 If the XamlCompiler step fails from the CLI, build and run from Visual Studio instead.
@@ -36,9 +36,9 @@ If the XamlCompiler step fails from the CLI, build and run from Visual Studio in
 
 All source code is under **Source/**:
 
-- **Source/DriveWiper/** – WinUI 3 app
-- **Source/DriveWiper/Models/** – `DriveItem` model
-- **Source/DriveWiper/Services/** – `DriveService` (WMI drive list and format)
+- **Source/DiskEraser/** – WinUI 3 app (Disk Eraser)
+- **Source/DiskEraser/Models/** – `DriveItem` model
+- **Source/DiskEraser/Services/** – `DriveService` (WMI drive list and format)
 - **Source/README.md** – More detail on structure and packaging
 
 ## License

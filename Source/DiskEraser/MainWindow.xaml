@@ -1,8 +1,8 @@
 <Window
-    x:Class="DriveWiper.MainWindow"
+    x:Class="DiskEraser.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Drive Wiper">
+    Title="Disk Eraser">
 
     <Grid Background="Transparent">
         <Grid.RowDefinitions>
@@ -12,7 +12,7 @@
 
         <!-- Custom title bar: Mica shows through; this element is the drag region -->
         <Grid x:Name="AppTitleBar" Height="48" Background="Transparent" Padding="24,0,120,0" VerticalAlignment="Top">
-            <TextBlock Text="Drive Wiper" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="Disk Eraser" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
         </Grid>
 
         <Grid Grid.Row="1" Padding="24" RowSpacing="12" ColumnSpacing="12" Background="Transparent">
@@ -90,8 +90,8 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
-            <StackPanel Grid.Column="1" Spacing="6">
-                <TextBlock Text="Drive layout (click a partition to select it)" FontWeight="SemiBold" />
+            <StackPanel Grid.Column="1" x:Name="DriveLayoutSection" Spacing="6">
+                <TextBlock Text="Drive layout (right-click for Partition Manager)" FontWeight="SemiBold" />
                 <Border x:Name="DiagramHost" BorderBrush="Gray" BorderThickness="1" Padding="8" CornerRadius="4" MinHeight="120">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                         <StackPanel x:Name="DiagramPanel" Spacing="6" />
@@ -107,6 +107,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button x:Name="RefreshButton" Content="Refresh drives" Click="RefreshButton_Click" />
                 <Button x:Name="FormatButton" Content="Format drive" Click="FormatButton_Click" />
+                <Button x:Name="ManagePartitionsButton" Content="Manage partitions" Click="ManagePartitionsButton_Click" />
                 <Button x:Name="SettingsButton" Content="Settings" Click="SettingsButton_Click" />
             </StackPanel>
         </StackPanel>

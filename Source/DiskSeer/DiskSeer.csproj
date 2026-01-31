@@ -10,16 +10,22 @@
     <Platforms>x86;x64;ARM64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <RootNamespace>DriveWiper</RootNamespace>
+    <RootNamespace>DiskSeer</RootNamespace>
     <!-- Use None for unpackaged app (no MSIX); set to MSIX and add Package.appxmanifest + Assets for store build -->
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.241001000" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
-    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="DiscUtils.Core" Version="0.16.13" />
+    <PackageReference Include="DiscUtils.Ext" Version="0.16.13" />
+    <PackageReference Include="DiscUtils.HfsPlus" Version="0.16.13" />
+    <PackageReference Include="DiscUtils.Xfs" Version="0.16.13" />
+    <PackageReference Include="DiscUtils.Btrfs" Version="0.16.13" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260101001" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7463" />
+    <PackageReference Include="System.Management" Version="10.0.2" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 

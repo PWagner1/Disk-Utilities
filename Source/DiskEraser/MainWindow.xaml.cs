@@ -8,13 +8,13 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using WinRT.Interop;
 using Microsoft.UI.Xaml.Media;
-using DriveWiper.Models;
-using DriveWiper.Services;
+using DiskEraser.Models;
+using DiskEraser.Services;
 
-namespace DriveWiper;
+namespace DiskEraser;
 
 /// <summary>
-/// Main window for the Drive Wiper app: lists formattable drives, format options, and runs format via <see cref="DriveService"/>.
+/// Main window for the Disk Eraser app: lists formattable drives, format options, and runs format via <see cref="DriveService"/>.
 /// The system drive (C:) is never shown and cannot be formatted.
 /// </summary>
 public sealed partial class MainWindow : Window
@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window
         LoadSecureWipePresets();
         RefreshDrives();
         BuildDiagram();
+        SetDriveLayoutContextMenu();
         SecureDeletionCheck.Checked += (_, _) => UpdateSecureWipePresetState();
         SecureDeletionCheck.Unchecked += (_, _) => UpdateSecureWipePresetState();
         UpdateSecureWipePresetState();
@@ -282,6 +283,28 @@ public sealed partial class MainWindow : Window
             }
             DiagramPanel.Children.Add(row);
         }
+
+    }
+
+    /// <summary>Sets the context menu on the drive layout section (right-click graph area for Partition Manager).</summary>
+    private void SetDriveLayoutContextMenu()
+    {
+        var diagramMenu = new MenuFlyout();
+        var openItem = new MenuFlyoutItem { Text = "Open Partition Manager" };
+        openItem.Click += (_, _) =>
+        {
+            var partitionWindow = new PartitionManagementWindow();
+            partitionWindow.Closed += (_, _) =>
+            {
+                RefreshDrives();
+                BuildDiagram();
+            };
+            partitionWindow.Activate();
+        };
+        diagramMenu.Items.Add(openItem);
+        var section = (Content as FrameworkElement)?.FindName("DriveLayoutSection") as StackPanel;
+        if (section != null)
+            section.ContextFlyout = diagramMenu;
     }
 
     /// <summary>Creates the context menu for a partition block (format, change letter, Disk Management).</summary>
@@ -295,18 +318,18 @@ public sealed partial class MainWindow : Window
         changeLetterItem.Click += ContextMenu_ChangeDriveLetter_Click;
         changeLetterItem.IsEnabled = !string.IsNullOrEmpty(part.DriveLetter) && !part.IsProtected;
 
+        var openPartitionManagerItem = new MenuFlyoutItem { Text = "Open Partition Manager", Tag = part };
+        openPartitionManagerItem.Click += ContextMenu_OpenPartitionManager_Click;
+
         var openDiskMgmtItem = new MenuFlyoutItem { Text = "Open Disk Management", Tag = part };
         openDiskMgmtItem.Click += ContextMenu_OpenDiskManagement_Click;
-
-        var managePartitionsItem = new MenuFlyoutItem { Text = "Manage partitions (add/remove/resize)", Tag = part };
-        managePartitionsItem.Click += ContextMenu_OpenDiskManagement_Click;
 
         var flyout = new MenuFlyout();
         flyout.Items.Add(formatItem);
         flyout.Items.Add(changeLetterItem);
         flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(openPartitionManagerItem);
         flyout.Items.Add(openDiskMgmtItem);
-        flyout.Items.Add(managePartitionsItem);
         return flyout;
     }
 
@@ -391,6 +414,17 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ContextMenu_OpenPartitionManager_Click(object sender, RoutedEventArgs e)
+    {
+        var partitionWindow = new PartitionManagementWindow();
+        partitionWindow.Closed += (_, _) =>
+        {
+            RefreshDrives();
+            BuildDiagram();
+        };
+        partitionWindow.Activate();
+    }
+
     private void ContextMenu_OpenDiskManagement_Click(object sender, RoutedEventArgs e)
     {
         DriveService.OpenDiskManagement();
@@ -400,6 +434,17 @@ public sealed partial class MainWindow : Window
     {
         var settingsWindow = new SettingsWindow(onSaved: () => BuildDiagram());
         settingsWindow.Activate();
+    }
+
+    private void ManagePartitionsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var partitionWindow = new PartitionManagementWindow();
+        partitionWindow.Closed += (_, _) =>
+        {
+            RefreshDrives();
+            BuildDiagram();
+        };
+        partitionWindow.Activate();
     }
 
     private void PartitionBlock_Click(object sender, RoutedEventArgs e)

@@ -1,9 +1,8 @@
-using Microsoft.UI.Xaml;
-
-namespace DriveWiper;
+namespace DiskSeer;
 
 /// <summary>
-/// Application entry point and global resources for the Drive Wiper WinUI app.
+/// Application entry point and global resources for the DiskSeer WinUI app.
+/// Provides access to Apple (HFS+, APFS) and Linux (ext2/3/4, Btrfs, XFS) file systems on Windows.
 /// </summary>
 public partial class App : Application
 {

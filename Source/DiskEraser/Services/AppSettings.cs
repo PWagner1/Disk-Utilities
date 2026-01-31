@@ -1,7 +1,7 @@
 using Microsoft.UI;
 using Windows.Storage;
 
-namespace DriveWiper.Services;
+namespace DiskEraser.Services;
 
 /// <summary>
 /// Persists user settings (e.g. diagram colours) to local app storage.

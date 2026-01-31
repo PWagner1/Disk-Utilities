@@ -1,20 +1,35 @@
-# Drive Wiper – Source
+# Disk Utilities – Source
 
-This folder contains the **Drive Wiper** application: a WinUI 3 desktop tool to format drives with support for common file systems. The system drive (`C:\`) cannot be formatted.
+This folder contains three WinUI 3 desktop applications for disk management:
+
+- **DiskEraser** – Format drives with secure deletion options
+- **DiskHealth** – Recover deleted files from drives
+- **DiskSeer** – Read and modify drives formatted with Apple or Linux file systems
 
 ## Structure
 
-- **DriveWiper/** – Main WinUI 3 (Windows App SDK) project
-  - **App.xaml / App.xaml.cs** – Application entry and resources
-  - **MainWindow.xaml / MainWindow.xaml.cs** – Main UI: drive list, format options, and actions
-  - **Models/DriveItem.cs** – Model for a logical drive (letter, label, file system, size)
-  - **Services/DriveService.cs** – WMI-based drive enumeration and formatting (Win32_Volume)
+- **DiskEraser/** – WinUI 3 project for drive formatting
+  - **MainWindow.xaml** – Drive selection, format options, partition layout diagram
+  - **PartitionManagementWindow.xaml** – Create, delete, extend, and shrink partitions
+  - **Models/** – DiskInfo, DriveItem, PartitionInfo models
+  - **Services/DriveService.cs** – WMI-based drive enumeration, formatting, and diskpart operations
+
+- **DiskHealth/** – WinUI 3 project for file recovery
+  - **MainWindow.xaml** – Drive selection, scan, recoverable file list with recovery chances
+  - **Models/RecoverableFileInfo.cs**, **ScannableDrive** – Models for scan results
+  - **Services/RecoveryService.cs** – Drive enumeration, file-signature scanning, and recovery
+
+- **DiskSeer/** – WinUI 3 project for accessing foreign file systems
+  - **MainWindow.xaml** – Drive/partition selection, file browser with breadcrumb navigation
+  - **Models/** – ForeignDriveInfo, ForeignPartitionInfo, FileSystemEntry, BreadcrumbItem
+  - **Services/ForeignDriveService.cs** – Detection and access to Apple/Linux file systems via DiscUtils
 
 ## Requirements
 
 - Windows 10 19041+ or Windows 11
 - .NET 8 SDK
 - Visual Studio 2022 with **Windows application development** (WinUI) workload, or build from command line with `dotnet build`
+- **Administrator rights** – Required for DiskSeer to access raw disk partitions
 
 ## Build and run
 
@@ -22,13 +37,17 @@ From the repo root or from `Source`:
 
 ```bash
 cd Source
-dotnet build DriveWiper.sln -c Debug
-dotnet run --project DriveWiper
+dotnet build "Disk Utilities.sln" -c Debug -p:Platform=x64
+dotnet run --project DiskEraser -p:Platform=x64
+# or
+dotnet run --project DiskHealth -p:Platform=x64
+# or
+dotnet run --project DiskSeer -p:Platform=x64
 ```
 
-Or open `Source/DriveWiper.sln` in Visual Studio and press F5.
+Or open `Source/Disk Utilities.sln` in Visual Studio and press F5.
 
-## Secure deletion
+## DiskEraser – Secure deletion
 
 When **Secure deletion** is enabled, the app overwrites all free space on the selected drive with cryptographically random data for the chosen number of passes, then formats. Presets:
 
@@ -36,22 +55,42 @@ When **Secure deletion** is enabled, the app overwrites all free space on the se
 - **3 passes (DoD 5220.22-M)** – U.S. DoD standard
 - **7 passes (Military grade)** – Multiple overwrites for high-sensitivity data
 
-Progress is shown during the wipe. Format options (file system, label, etc.) apply after the wipe.
+## DiskSeer – Foreign File Systems
 
-## File systems
+DiskSeer can read and write drives formatted with non-Windows file systems:
 
-The UI offers:
+**Supported file systems (read/write):**
+- **Linux**: ext2, ext3, ext4, Btrfs, XFS
+- **Apple**: HFS+ (read/write)
+
+**Detected but not fully supported:**
+- **APFS** – Detected but not supported for browsing (Apple's newest file system uses encryption and compression that DiscUtils doesn't fully support)
+
+### Features
+- Browse files and folders on foreign file systems
+- Copy files from foreign drives to Windows
+- Copy files from Windows to foreign drives
+- Create, rename, and delete files and folders
+- View file properties (permissions, timestamps, sizes)
+
+### How it works
+DiskSeer uses the [DiscUtils](https://github.com/DiscUtils/DiscUtils) library to parse file system structures directly from raw disk sectors. This requires administrator privileges to access `\\.\PhysicalDriveN` devices.
+
+## File systems (DiskEraser)
+
+The format UI offers:
 
 - **Windows**: NTFS, FAT32, FAT, exFAT, ReFS  
 - **Linux**: ext2, ext3, ext4, Btrfs, XFS  
 - **Apple**: HFS, HFS+, APFS  
 
-Formatting is done via WMI `Win32_Volume.Format`. Windows natively supports NTFS, FAT, and FAT32; exFAT and ReFS may work on newer Windows. ext, APFS, HFS, etc. are listed for completeness—formatting them on Windows typically returns “Unsupported file system” unless you use third-party drivers or tools (e.g. WSL for ext). If a file system is unsupported, the app shows the WMI result message.
+Formatting is done via WMI `Win32_Volume.Format`. Windows natively supports NTFS, FAT, and FAT32; exFAT and ReFS may work on newer Windows. Linux and Apple file systems typically return "Unsupported file system" unless you use third-party drivers.
 
 ## Safety
 
-- The **C:\** drive is never listed and cannot be selected for formatting. The service excludes it when enumerating drives and rejects format requests for it.
+- The **C:\** drive is never listed and cannot be selected for formatting in DiskEraser
+- DiskSeer requires explicit partition selection before any operations
 
 ## Packaging
 
-The project is configured as **unpackaged** (`WindowsPackageType=None`) for simple build and run. To produce an MSIX package, set `WindowsPackageType` to `MSIX`, add `Package.appxmanifest`, and include the required Assets (e.g. StoreLogo, SplashScreen) in an `Assets` folder.
+Projects are configured as **unpackaged** (`WindowsPackageType=None`) for simple build and run. To produce an MSIX package, set `WindowsPackageType` to `MSIX`, add `Package.appxmanifest`, and include the required Assets.

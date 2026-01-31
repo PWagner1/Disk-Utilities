@@ -4,9 +4,9 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Composition.SystemBackdrops;
 using WinRT.Interop;
-using DriveWiper.Services;
+using DiskEraser.Services;
 
-namespace DriveWiper;
+namespace DiskEraser;
 
 /// <summary>
 /// Settings window for diagram colours and other preferences.
@@ -19,10 +19,11 @@ public sealed partial class SettingsWindow : Window
     public SettingsWindow(Action? onSaved = null)
     {
         _onSaved = onSaved;
+        
         InitializeComponent();
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
-        TrySetWindowSize(400, 380);
+        TrySetWindowSize(400, 463);
         LoadColourPresets();
         LoadCurrentColours();
         UpdateColourPreviews();

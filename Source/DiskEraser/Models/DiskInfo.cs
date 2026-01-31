@@ -1,4 +1,4 @@
-namespace DriveWiper.Models;
+namespace DiskEraser.Models;
 
 /// <summary>
 /// Represents a physical disk and its partitions for the layout diagram.
