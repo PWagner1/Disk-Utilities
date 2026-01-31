@@ -98,6 +98,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button x:Name="RefreshButton" Content="Refresh drives" Click="RefreshButton_Click" />
                     <Button x:Name="RecoverButton" Content="Recover selected" Click="RecoverButton_Click" />
+                    <Button x:Name="SmartStatsButton" Content="S.M.A.R.T. stats..." Click="SmartStatsButton_Click" />
                 </StackPanel>
             </StackPanel>
         </Grid>

@@ -30,22 +30,10 @@
                 <ComboBox x:Name="DiskCombo" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayCaption" SelectionChanged="DiskCombo_SelectionChanged" />
             </StackPanel>
 
-            <Grid Grid.Row="2" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Spacing="8">
-                    <TextBlock Text="Partitions and unallocated space" FontWeight="SemiBold" />
-                    <ListView x:Name="PartitionList" SelectionMode="Single" SelectionChanged="PartitionList_SelectionChanged" DisplayMemberPath="DisplayText" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Top">
-                    <TextBlock Text="Disk usage" FontWeight="SemiBold" />
-                    <Border BorderBrush="Gray" BorderThickness="1" Padding="8" CornerRadius="4" Background="#1A1A1A">
-                        <Canvas x:Name="PieChartCanvas" Width="220" Height="160" />
-                    </Border>
-                </StackPanel>
-            </Grid>
+            <StackPanel Grid.Row="2" Spacing="8">
+                <TextBlock Text="Partitions and unallocated space" FontWeight="SemiBold" />
+                <ListView x:Name="PartitionList" SelectionMode="Single" SelectionChanged="PartitionList_SelectionChanged" DisplayMemberPath="DisplayText" />
+            </StackPanel>
 
             <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
                 <Button x:Name="CreatePartitionButton" Content="Create partition" Click="CreatePartitionButton_Click" />

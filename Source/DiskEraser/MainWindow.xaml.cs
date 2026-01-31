@@ -7,7 +7,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using WinRT.Interop;
-using Microsoft.UI.Xaml.Media;
 using DiskEraser.Models;
 using DiskEraser.Services;
 
@@ -111,12 +110,10 @@ public sealed partial class MainWindow : Window
 
     private void ClusterSizePresetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ClusterSizePresetCombo?.SelectedIndex < 0 || ClusterSizePresetCombo.SelectedIndex >= ClusterSizePresets.Length)
-        {
+        var combo = ClusterSizePresetCombo;
+        if (combo == null || combo.SelectedIndex < 0 || combo.SelectedIndex >= ClusterSizePresets.Length)
             return;
-        }
-
-        uint bytes = ClusterSizePresets[ClusterSizePresetCombo.SelectedIndex].Bytes;
+        uint bytes = ClusterSizePresets[combo.SelectedIndex].Bytes;
         if (ClusterSizeBox != null)
         {
             ClusterSizeBox.Text = bytes == 0 ? string.Empty : bytes.ToString();
@@ -157,13 +154,9 @@ public sealed partial class MainWindow : Window
         foreach (DriveItem d in _drives)
             DriveCombo.Items.Add(d);
         if (_drives.Count > 0)
-        {
             DriveCombo.SelectedIndex = 0;
-        }
         else
-        {
             DriveCombo.PlaceholderText = "No other drives found (C: is protected).";
-        }
     }
 
     private void DriveCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -283,28 +276,6 @@ public sealed partial class MainWindow : Window
             }
             DiagramPanel.Children.Add(row);
         }
-
-    }
-
-    /// <summary>Sets the context menu on the drive layout section (right-click graph area for Partition Manager).</summary>
-    private void SetDriveLayoutContextMenu()
-    {
-        var diagramMenu = new MenuFlyout();
-        var openItem = new MenuFlyoutItem { Text = "Open Partition Manager" };
-        openItem.Click += (_, _) =>
-        {
-            var partitionWindow = new PartitionManagementWindow();
-            partitionWindow.Closed += (_, _) =>
-            {
-                RefreshDrives();
-                BuildDiagram();
-            };
-            partitionWindow.Activate();
-        };
-        diagramMenu.Items.Add(openItem);
-        var section = (Content as FrameworkElement)?.FindName("DriveLayoutSection") as StackPanel;
-        if (section != null)
-            section.ContextFlyout = diagramMenu;
     }
 
     /// <summary>Creates the context menu for a partition block (format, change letter, Disk Management).</summary>
@@ -331,6 +302,27 @@ public sealed partial class MainWindow : Window
         flyout.Items.Add(openPartitionManagerItem);
         flyout.Items.Add(openDiskMgmtItem);
         return flyout;
+    }
+
+    /// <summary>Sets the context menu on the drive layout section (right-click graph area for Partition Manager).</summary>
+    private void SetDriveLayoutContextMenu()
+    {
+        var diagramMenu = new MenuFlyout();
+        var openItem = new MenuFlyoutItem { Text = "Open Partition Manager" };
+        openItem.Click += (_, _) =>
+        {
+            var partitionWindow = new PartitionManagementWindow();
+            partitionWindow.Closed += (_, _) =>
+            {
+                RefreshDrives();
+                BuildDiagram();
+            };
+            partitionWindow.Activate();
+        };
+        diagramMenu.Items.Add(openItem);
+        var section = (Content as FrameworkElement)?.FindName("DriveLayoutSection") as StackPanel;
+        if (section != null)
+            section.ContextFlyout = diagramMenu;
     }
 
     private void ContextMenu_Format_Click(object sender, RoutedEventArgs e)

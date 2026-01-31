@@ -82,7 +82,6 @@ public sealed partial class PartitionManagementWindow : Window
         {
             PartitionList.ItemsSource = null;
             UpdateButtonStates(null);
-            if (PieChartCanvas != null) PieChartCanvas.Children.Clear();
             return;
         }
         ulong used = 0;
@@ -111,80 +110,6 @@ public sealed partial class PartitionManagementWindow : Window
         PartitionList.ItemsSource = _partitionEntries.ToList();
         PartitionList.SelectedIndex = -1;
         UpdateButtonStates(null);
-        BuildPieChart(disk);
-    }
-
-    /// <summary>Builds a 3D-style (elliptical) pie chart for the selected disk on PieChartCanvas.</summary>
-    private void BuildPieChart(DiskInfo disk)
-    {
-        if (PieChartCanvas == null) return;
-        PieChartCanvas.Children.Clear();
-
-        ulong total = disk.Size > 0 ? disk.Size : 1;
-        double cx = 110;
-        double cy = 80;
-        double rx = 100;
-        double ry = 58; // Elliptical for 3D tilt effect
-        double startAngleDeg = 0; // Start from right (3 o'clock)
-
-        // Colours: use AppSettings for partition types, gray for unallocated
-        Windows.UI.Color formattable = AppSettings.ParseColor(AppSettings.GetFormattableColour()) ?? Microsoft.UI.Colors.SteelBlue;
-        Windows.UI.Color systemDrive = AppSettings.ParseColor(AppSettings.GetSystemDriveColour()) ?? Microsoft.UI.Colors.OrangeRed;
-        Windows.UI.Color noLetter = AppSettings.ParseColor(AppSettings.GetNoLetterColour()) ?? Microsoft.UI.Colors.Gray;
-        Windows.UI.Color unallocated = Microsoft.UI.Colors.DarkGray;
-
-        foreach (var p in disk.Partitions)
-        {
-            double sweepDeg = 360.0 * (p.Size / (double)total);
-            if (sweepDeg <= 0) continue;
-            Windows.UI.Color fill = p.IsProtected ? systemDrive : string.IsNullOrEmpty(p.DriveLetter) ? noLetter : formattable;
-            AddPieSlice(PieChartCanvas, cx, cy, rx, ry, startAngleDeg, sweepDeg, fill);
-            startAngleDeg += sweepDeg;
-        }
-
-        ulong used = disk.Partitions.Aggregate(0UL, (s, p) => s + p.Size);
-        ulong free = disk.Size > used ? disk.Size - used : 0;
-        if (free > 0)
-        {
-            double sweepDeg = 360.0 * (free / (double)total);
-            AddPieSlice(PieChartCanvas, cx, cy, rx, ry, startAngleDeg, sweepDeg, unallocated);
-        }
-    }
-
-    private static void AddPieSlice(Canvas canvas, double cx, double cy, double rx, double ry, double startAngleDeg, double sweepDeg, Windows.UI.Color color)
-    {
-        double startRad = startAngleDeg * Math.PI / 180.0;
-        double endRad = (startAngleDeg + sweepDeg) * Math.PI / 180.0;
-        double x1 = cx + rx * Math.Cos(startRad);
-        double y1 = cy + ry * Math.Sin(startRad);
-        double x2 = cx + rx * Math.Cos(endRad);
-        double y2 = cy + ry * Math.Sin(endRad);
-
-        var figure = new PathFigure
-        {
-            StartPoint = new Windows.Foundation.Point(cx, cy),
-            IsClosed = true
-        };
-        figure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(x1, y1) });
-        figure.Segments.Add(new ArcSegment
-        {
-            Point = new Windows.Foundation.Point(x2, y2),
-            Size = new Windows.Foundation.Size(rx, ry),
-            IsLargeArc = sweepDeg > 180,
-            SweepDirection = SweepDirection.Clockwise
-        });
-        var geometry = new PathGeometry();
-        geometry.Figures.Add(figure);
-        var pathShape = new Microsoft.UI.Xaml.Shapes.Path
-        {
-            Data = geometry,
-            Fill = new SolidColorBrush(color),
-            Stroke = new SolidColorBrush(Microsoft.UI.Colors.Black),
-            StrokeThickness = 1
-        };
-        Canvas.SetLeft(pathShape, 0);
-        Canvas.SetTop(pathShape, 0);
-        canvas.Children.Add(pathShape);
     }
 
     private static string FormatBytes(ulong bytes)

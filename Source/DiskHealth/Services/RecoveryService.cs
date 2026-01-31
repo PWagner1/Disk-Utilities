@@ -70,63 +70,79 @@ public static class RecoveryService
             return results;
 
         string path = $"\\\\.\\{driveLetter}:";
+        const int FILE_FLAG_BACKUP_SEMANTICS = 0x02000000; // Required for opening volumes
+
         await Task.Run(() =>
         {
             try
             {
-                using var handle = CreateFile(path,
-                    FileAccess.Read,
-                    FileShare.Read,
-                    IntPtr.Zero,
-                    FileMode.Open,
-                    FileAttributes.Normal,
-                    IntPtr.Zero);
-
-                if (handle.IsInvalid)
+                SafeFileHandle? handle = null;
+                for (int attempt = 0; attempt < 3; attempt++)
                 {
-                    int err = Marshal.GetLastWin32Error();
-                    if (err == 5) // ACCESS_DENIED - admin required
-                        throw new UnauthorizedAccessException("Administrator privileges required for raw disk access.");
-                    throw new IOException($"Cannot open drive: error {err}");
-                }
+                    handle = CreateFile(path,
+                        FileAccess.Read,
+                        FileShare.Read,
+                        IntPtr.Zero,
+                        FileMode.Open,
+                        (FileAttributes)FILE_FLAG_BACKUP_SEMANTICS,
+                        IntPtr.Zero);
 
-                const int chunkSize = 1024 * 1024; // 1 MB chunks
-                var buffer = new byte[chunkSize];
-                long offset = 0;
-                int seq = 0;
-
-                while (true)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    int read = ReadFile(handle, buffer, chunkSize, out _, IntPtr.Zero);
-                    if (read <= 0)
+                    if (!handle.IsInvalid)
                         break;
 
-                    for (int i = 0; i <= read - 16; i++)
+                    int err = Marshal.GetLastWin32Error();
+                    if (err == 5)
+                        throw new UnauthorizedAccessException("Administrator privileges required for raw disk access.");
+                    if (err == 32 && attempt < 2)
+                    {
+                        Thread.Sleep(500 * (attempt + 1)); // Retry on sharing violation
+                        continue;
+                    }
+                    throw new IOException(err == 32
+                        ? "Drive is in use by another process. Close other applications using this drive and try again."
+                        : $"Cannot open drive: error {err}");
+                }
+
+                using (handle!)
+                {
+                    const int chunkSize = 1024 * 1024; // 1 MB chunks
+                    var buffer = new byte[chunkSize];
+                    long offset = 0;
+                    int seq = 0;
+
+                    while (true)
                     {
                         ct.ThrowIfCancellationRequested();
-                        foreach (var (sig, ext, name) in Signatures)
+                        int read = ReadFile(handle, buffer, chunkSize, out _, IntPtr.Zero);
+                        if (read <= 0)
+                            break;
+
+                        for (int i = 0; i <= read - 16; i++)
                         {
-                            if (i + sig.Length > read) continue;
-                            if (!Matches(buffer, i, sig)) continue;
-
-                            long fileOffset = offset + i;
-                            int chance = EstimateRecoveryChance();
-                            results.Add(new RecoverableFileInfo
+                            ct.ThrowIfCancellationRequested();
+                            foreach (var (sig, ext, name) in Signatures)
                             {
-                                DisplayName = $"{name}_recovered_{seq++:D4}{ext}",
-                                FileType = ext,
-                                EstimatedSize = 0,
-                                RecoveryChancePercent = chance,
-                                Offset = fileOffset
-                            });
-                            progress?.Report((offset + read, results.Count));
-                            break; // one match per position
-                        }
-                    }
+                                if (i + sig.Length > read) continue;
+                                if (!Matches(buffer, i, sig)) continue;
 
-                    offset += read;
-                    progress?.Report((offset, results.Count));
+                                long fileOffset = offset + i;
+                                int chance = EstimateRecoveryChance();
+                                results.Add(new RecoverableFileInfo
+                                {
+                                    DisplayName = $"{name}_recovered_{seq++:D4}{ext}",
+                                    FileType = ext,
+                                    EstimatedSize = 0,
+                                    RecoveryChancePercent = chance,
+                                    Offset = fileOffset
+                                });
+                                progress?.Report((offset + read, results.Count));
+                                break; // one match per position
+                            }
+                        }
+
+                        offset += read;
+                        progress?.Report((offset, results.Count));
+                    }
                 }
             }
             catch (Exception)
@@ -150,6 +166,7 @@ public static class RecoveryService
     {
         driveLetter = driveLetter.Trim().TrimEnd(':');
         string path = $"\\\\.\\{driveLetter}:";
+        const int FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
 
         var toRecover = files.Where(f => f.IsSelected).ToList();
         int total = toRecover.Count;
@@ -157,18 +174,36 @@ public static class RecoveryService
 
         await Task.Run(() =>
         {
-            using var handle = CreateFile(path,
-                FileAccess.Read,
-                FileShare.Read,
-                IntPtr.Zero,
-                FileMode.Open,
-                FileAttributes.Normal,
-                IntPtr.Zero);
+            SafeFileHandle? handle = null;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                handle = CreateFile(path,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    IntPtr.Zero,
+                    FileMode.Open,
+                    (FileAttributes)FILE_FLAG_BACKUP_SEMANTICS,
+                    IntPtr.Zero);
 
-            if (handle.IsInvalid)
-                throw new UnauthorizedAccessException("Administrator privileges required for raw disk access.");
+                if (!handle.IsInvalid)
+                    break;
 
-            Directory.CreateDirectory(destinationFolder);
+                int err = Marshal.GetLastWin32Error();
+                if (err == 5)
+                    throw new UnauthorizedAccessException("Administrator privileges required for raw disk access.");
+                if (err == 32 && attempt < 2)
+                {
+                    Thread.Sleep(500 * (attempt + 1));
+                    continue;
+                }
+                throw new IOException(err == 32
+                    ? "Drive is in use by another process. Close other applications using this drive and try again."
+                    : $"Cannot open drive: error {err}");
+            }
+
+            using (handle!)
+            {
+                Directory.CreateDirectory(destinationFolder);
 
             const int maxChunk = 512 * 1024; // 512 KB per read
             var buffer = new byte[maxChunk];
@@ -214,6 +249,7 @@ public static class RecoveryService
 
                 current++;
                 progress?.Report((current, total, file.DisplayName));
+            }
             }
         }, ct).ConfigureAwait(false);
     }

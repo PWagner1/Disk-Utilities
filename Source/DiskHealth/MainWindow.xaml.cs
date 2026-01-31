@@ -213,6 +213,12 @@ public sealed partial class MainWindow : Window
         LoadDrives();
     }
 
+    private void SmartStatsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new SmartStatsWindow();
+        window.Activate();
+    }
+
     private async System.Threading.Tasks.Task ShowMessageAsync(string message)
     {
         var dialog = new ContentDialog
