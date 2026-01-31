@@ -2,76 +2,114 @@
     x:Class="DriveWiper.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Drive Wiper"
-    MinWidth="520"
-    MinHeight="420"
-    Width="560"
-    Height="480">
+    Title="Drive Wiper">
 
-    <Grid Padding="24" RowSpacing="12" ColumnSpacing="12">
+    <Grid Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- Custom title bar: Mica shows through; this element is the drag region -->
+        <Grid x:Name="AppTitleBar" Height="48" Background="Transparent" Padding="24,0,120,0" VerticalAlignment="Top">
+            <TextBlock Text="Drive Wiper" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </Grid>
+
+        <Grid Grid.Row="1" Padding="24" RowSpacing="12" ColumnSpacing="12" Background="Transparent">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
         <StackPanel Grid.Row="0" Spacing="4">
-            <TextBlock Text="Drive Wiper" FontSize="22" FontWeight="SemiBold" />
             <TextBlock Text="Select a drive and file system, then format. The system drive (C:) cannot be formatted."
-                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                       TextWrapping="Wrap" Opacity="0.8" />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Spacing="8">
             <TextBlock Text="Drive" FontWeight="SemiBold" />
-            <ComboBox x:Name="DriveCombo"
-                      PlaceholderText="Select a drive..."
-                      DisplayMemberPath="DisplayText"
-                      HorizontalAlignment="Stretch"
-                      SelectionChanged="DriveCombo_SelectionChanged" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ComboBox x:Name="DriveCombo"
+                          PlaceholderText="Select a drive..."
+                          DisplayMemberPath="DisplayText"
+                          Width="280"
+                          SelectionChanged="DriveCombo_SelectionChanged" />
+                <TextBlock Text="Drive letter:" VerticalAlignment="Center" />
+                <TextBox x:Name="DriveLetterBox"
+                         PlaceholderText="e.g. D or D:"
+                         MaxLength="3"
+                         Width="80"
+                         TextChanged="DriveLetterBox_TextChanged" />
+            </StackPanel>
+            <TextBlock Text="Select a drive from the list or type a drive letter (e.g. D). C: cannot be formatted." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
         </StackPanel>
 
-        <Border Grid.Row="2" BorderBrush="{ThemeResource SystemControlForegroundBaseMediumLowBrush}" BorderThickness="1" Padding="12" CornerRadius="4">
-            <StackPanel Spacing="12">
-                <TextBlock Text="Format options" FontWeight="SemiBold" />
-                <StackPanel Spacing="4">
-                    <TextBlock Text="File system" FontWeight="SemiBold" />
-                    <ComboBox x:Name="FileSystemCombo"
-                              PlaceholderText="Select file system..."
-                              HorizontalAlignment="Stretch"
-                              SelectedIndex="0" />
-                </StackPanel>
-                <StackPanel Spacing="4">
-                    <TextBlock Text="Volume label (optional)" FontWeight="SemiBold" />
-                    <TextBox x:Name="VolumeLabelBox" PlaceholderText="New volume label" MaxLength="32" />
-                </StackPanel>
-                <StackPanel Spacing="4">
-                    <TextBlock Text="Allocation unit size (bytes, 0 = default)" FontWeight="SemiBold" />
-                    <TextBox x:Name="ClusterSizeBox" PlaceholderText="0 or e.g. 4096, 8192" InputScope="Number" />
-                </StackPanel>
-                <CheckBox x:Name="QuickFormatCheck" Content="Quick format (skip bad sector scan)" IsChecked="True" />
-                <CheckBox x:Name="CompressionCheck" Content="Compress files to save space (NTFS and supported file systems)" IsChecked="False" />
-                <StackPanel Spacing="4">
-                    <CheckBox x:Name="SecureDeletionCheck" Content="Secure deletion (overwrite free space before format)" IsChecked="False" />
-                    <StackPanel x:Name="SecureWipePresetPanel" Spacing="4" Margin="24,0,0,0" Opacity="0.7">
-                        <TextBlock Text="Wipe passes" FontWeight="SemiBold" />
-                        <ComboBox x:Name="SecureWipePresetCombo"
-                                  PlaceholderText="Select passes..."
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" BorderBrush="Gray" BorderThickness="1" Padding="12" CornerRadius="4">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Format options" FontWeight="SemiBold" />
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="File system" FontWeight="SemiBold" />
+                        <ComboBox x:Name="FileSystemCombo"
+                                  PlaceholderText="Select file system..."
                                   HorizontalAlignment="Stretch"
                                   SelectedIndex="0" />
                     </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Volume label (optional)" FontWeight="SemiBold" />
+                        <TextBox x:Name="VolumeLabelBox" PlaceholderText="New volume label" MaxLength="32" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Allocation unit size (cluster size for format)" FontWeight="SemiBold" />
+                        <TextBlock Text="Choose or type size in bytes; 0 = system default. Common: 4096 (4 KB), 8192 (8 KB), 65536 (64 KB)." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ComboBox x:Name="ClusterSizePresetCombo"
+                                      PlaceholderText="Preset..."
+                                      Width="250"
+                                      SelectionChanged="ClusterSizePresetCombo_SelectionChanged" />
+                            <TextBox x:Name="ClusterSizeBox" PlaceholderText="0 or custom bytes" InputScope="Number" HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </StackPanel>
+                    <CheckBox x:Name="QuickFormatCheck" Content="Quick format (skip bad sector scan)" IsChecked="True" />
+                    <CheckBox x:Name="CompressionCheck" Content="Compress files to save space (NTFS and supported file systems)" IsChecked="False" />
+                    <StackPanel Spacing="4">
+                        <CheckBox x:Name="SecureDeletionCheck" Content="Secure deletion (overwrite free space before format)" IsChecked="False" />
+                        <StackPanel x:Name="SecureWipePresetPanel" Spacing="4" Margin="24,0,0,0" Opacity="0.7">
+                            <TextBlock Text="Wipe passes" FontWeight="SemiBold" />
+                            <ComboBox x:Name="SecureWipePresetCombo"
+                                      PlaceholderText="Select passes..."
+                                      HorizontalAlignment="Stretch"
+                                      SelectedIndex="0" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
+            </Border>
+            <StackPanel Grid.Column="1" Spacing="6">
+                <TextBlock Text="Drive layout (click a partition to select it)" FontWeight="SemiBold" />
+                <Border x:Name="DiagramHost" BorderBrush="Gray" BorderThickness="1" Padding="8" CornerRadius="4" MinHeight="120">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="DiagramPanel" Spacing="6" />
+                    </ScrollViewer>
+                </Border>
             </StackPanel>
-        </Border>
+        </Grid>
 
         <StackPanel Grid.Row="3" Spacing="8">
             <ProgressBar x:Name="ProgressBar" IsIndeterminate="True" Visibility="Collapsed" Value="0" Minimum="0" Maximum="100" />
             <TextBlock x:Name="ProgressLabel" Text="" Visibility="Collapsed" />
-            <TextBlock x:Name="StatusText" Text="" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Visibility="Collapsed" />
+            <TextBlock x:Name="StatusText" Text="" TextWrapping="Wrap" Visibility="Collapsed" />
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button x:Name="RefreshButton" Content="Refresh drives" Click="RefreshButton_Click" />
-                <Button x:Name="FormatButton" Content="Format drive" Click="FormatButton_Click" Style="{ThemeResource AccentButtonStyle}" />
+                <Button x:Name="FormatButton" Content="Format drive" Click="FormatButton_Click" />
+                <Button x:Name="SettingsButton" Content="Settings" Click="SettingsButton_Click" />
             </StackPanel>
         </StackPanel>
+        </Grid>
     </Grid>
 </Window>

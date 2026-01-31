@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Management;
 using System.Security.Cryptography;
 using DriveWiper.Models;
@@ -18,11 +19,11 @@ public static class DriveService
     /// Presets for secure deletion (multiple overwrite passes). Passes overwrite free space with random data before format.
     /// </summary>
     public static readonly (string DisplayName, int Passes)[] SecureWipePresets =
-    {
+    [
         ("1 pass (quick overwrite)", 1),
         ("3 passes (DoD 5220.22-M)", 3),
-        ("7 passes (Military grade)", 7),
-    };
+        ("7 passes (Military grade)", 7)
+    ];
 
     /// <summary>
     /// File systems offered by the format UI (Windows, Linux, and Apple).
@@ -52,7 +53,9 @@ public static class DriveService
             {
                 var letter = obj["DriveLetter"]?.ToString()?.Trim().ToUpperInvariant();
                 if (string.IsNullOrEmpty(letter) || letter.Equals(ProtectedDriveLetter, StringComparison.OrdinalIgnoreCase))
+                {
                     continue;
+                }
 
                 list.Add(new DriveItem
                 {
@@ -73,6 +76,125 @@ public static class DriveService
     }
 
     /// <summary>
+    /// Gets the physical disk and partition layout for the diagram.
+    /// Uses Win32_DiskDrive, Win32_DiskPartition, Win32_LogicalDiskToPartition, and Win32_Volume.
+    /// </summary>
+    /// <returns>List of disks with their partitions; empty on WMI or permission errors.</returns>
+    public static IReadOnlyList<DiskInfo> GetDiskPartitionLayout()
+    {
+        var disks = new List<DiskInfo>();
+        try
+        {
+            var volumeInfoByLetter = GetVolumeInfoByDriveLetter();
+
+            using var diskSearcher = new ManagementObjectSearcher(
+                "SELECT DeviceID, Index, Size, Model FROM Win32_DiskDrive");
+            foreach (ManagementBaseObject diskObj in diskSearcher.Get())
+            {
+                using var disk = (ManagementObject)diskObj;
+                int diskIndex = Convert.ToInt32(disk["Index"]);
+                ulong diskSize = disk["Size"] != null ? Convert.ToUInt64(disk["Size"]) : 0;
+                string model = disk["Model"]?.ToString()?.Trim() ?? $"Disk {diskIndex}";
+
+                var diskInfo = new DiskInfo
+                {
+                    DiskIndex = diskIndex,
+                    Model = model,
+                    Size = diskSize,
+                    Partitions = new List<PartitionInfo>()
+                };
+
+                string diskPath = disk["DeviceID"]?.ToString() ?? string.Empty;
+                if (string.IsNullOrEmpty(diskPath))
+                {
+                    disks.Add(diskInfo);
+                    continue;
+                }
+
+                using var partitionSearcher = new ManagementObjectSearcher(
+                    $"SELECT DeviceID, Index, Size, StartingOffset FROM Win32_DiskPartition WHERE DiskIndex = {diskIndex}");
+                foreach (ManagementBaseObject partObj in partitionSearcher.Get())
+                {
+                    using var partition = (ManagementObject)partObj;
+                    int partIndex = Convert.ToInt32(partition["Index"]);
+                    ulong partSize = partition["Size"] != null ? Convert.ToUInt64(partition["Size"]) : 0;
+                    ulong partOffset = partition["StartingOffset"] != null ? Convert.ToUInt64(partition["StartingOffset"]) : 0;
+
+                    string driveLetter = string.Empty;
+                    string label = string.Empty;
+                    string fileSystem = string.Empty;
+                    ulong capacity = partSize;
+
+                    try
+                    {
+                        using var logicalDisks = partition.GetRelated("Win32_LogicalDisk");
+                        foreach (ManagementBaseObject ldObj in logicalDisks)
+                        {
+                            using var ld = (ManagementObject)ldObj;
+                            driveLetter = ld["DeviceID"]?.ToString()?.Trim().ToUpperInvariant() ?? string.Empty;
+                            if (!string.IsNullOrEmpty(driveLetter) && volumeInfoByLetter.TryGetValue(driveLetter, out var vol))
+                            {
+                                label = vol.Label;
+                                fileSystem = vol.FileSystem;
+                                capacity = vol.Capacity;
+                            }
+                            break;
+                        }
+                    }
+                    catch
+                    {
+                        // Partition may have no drive letter (e.g. recovery, EFI)
+                    }
+
+                    diskInfo.Partitions.Add(new PartitionInfo
+                    {
+                        PartitionIndex = partIndex,
+                        Size = partSize,
+                        Offset = partOffset,
+                        DriveLetter = driveLetter,
+                        Label = label,
+                        FileSystem = fileSystem,
+                        Capacity = capacity,
+                        IsProtected = driveLetter.Equals(ProtectedDriveLetter, StringComparison.OrdinalIgnoreCase)
+                    });
+                }
+
+                disks.Add(diskInfo);
+            }
+
+            disks.Sort((a, b) => a.DiskIndex.CompareTo(b.DiskIndex));
+        }
+        catch
+        {
+            // Return empty list on permission or WMI errors
+        }
+
+        return disks;
+    }
+
+    /// <summary>Builds a map of drive letter to volume label, file system, and capacity from Win32_Volume.</summary>
+    private static Dictionary<string, (string Label, string FileSystem, ulong Capacity)> GetVolumeInfoByDriveLetter()
+    {
+        var map = new Dictionary<string, (string, string, ulong)>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT DriveLetter, Label, FileSystem, Capacity FROM Win32_Volume WHERE DriveLetter IS NOT NULL");
+            foreach (ManagementBaseObject obj in searcher.Get())
+            {
+                var letter = obj["DriveLetter"]?.ToString()?.Trim().ToUpperInvariant();
+                if (string.IsNullOrEmpty(letter)) continue;
+                map[letter] = (
+                    obj["Label"]?.ToString() ?? string.Empty,
+                    obj["FileSystem"]?.ToString() ?? string.Empty,
+                    obj["Capacity"] != null ? Convert.ToUInt64(obj["Capacity"]) : 0);
+            }
+        }
+        catch { /* ignore */ }
+        return map;
+    }
+
+    /// <summary>
     /// Securely wipes free space on the volume by overwriting it with cryptographically random data multiple times.
     /// Call this before <see cref="FormatAsync"/> for "secure deletion" (e.g. Military grade = 7 passes).
     /// Does not allow wiping the protected drive (C:).
@@ -89,10 +211,15 @@ public static class DriveService
         CancellationToken cancellationToken = default)
     {
         var letter = driveLetter?.Trim().ToUpperInvariant() ?? string.Empty;
-        if (!letter.EndsWith(":", StringComparison.Ordinal))
+        if (!letter.EndsWith(':'))
+        {
             letter += ":";
+        }
+
         if (letter.Equals(ProtectedDriveLetter, StringComparison.Ordinal))
+        {
             return false;
+        }
 
         string rootPath = letter + Path.DirectorySeparatorChar;
         const int chunkSize = 1024 * 1024 * 64; // 64 MB per chunk
@@ -111,7 +238,11 @@ public static class DriveService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     long freeNow = GetFreeSpaceBytes(rootPath);
-                    if (freeNow <= 0) break;
+                    if (freeNow <= 0)
+                    {
+                        break;
+                    }
+
                     string filePath = Path.Combine(rootPath, $"SecureWipe_P{pass + 1}_{fileIndex}.tmp");
                     try
                     {
@@ -123,7 +254,11 @@ public static class DriveService
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
                                 int toWrite = (int)Math.Min(freeNow - writtenThisFile, chunkSize);
-                                if (toWrite <= 0) break;
+                                if (toWrite <= 0)
+                                {
+                                    break;
+                                }
+
                                 rng.GetBytes(buffer.AsSpan(0, toWrite));
                                 try
                                 {
@@ -142,10 +277,17 @@ public static class DriveService
                     }
                     finally
                     {
-                        try { if (File.Exists(filePath)) File.Delete(filePath); } catch { /* ignore */ }
+                        try { if (File.Exists(filePath))
+                            {
+                                File.Delete(filePath);
+                            }
+                        } catch { /* ignore */ }
                     }
                     fileIndex++;
-                    if (GetFreeSpaceBytes(rootPath) <= 0) break; // drive full, delete freed space and continue next pass
+                    if (GetFreeSpaceBytes(rootPath) <= 0)
+                    {
+                        break; // drive full, delete freed space and continue next pass
+                    }
                 }
             }
         }, cancellationToken).ConfigureAwait(false);
@@ -176,11 +318,15 @@ public static class DriveService
         CancellationToken cancellationToken = default)
     {
         var letter = driveLetter?.Trim().ToUpperInvariant() ?? string.Empty;
-        if (!letter.EndsWith(":", StringComparison.Ordinal))
+        if (!letter.EndsWith(':'))
+        {
             letter += ":";
+        }
 
         if (letter.Equals(ProtectedDriveLetter, StringComparison.Ordinal))
+        {
             return 3; // Access denied
+        }
 
         uint result = 18; // Unknown error
         await Task.Run(() =>
@@ -190,12 +336,13 @@ public static class DriveService
                 using var searcher = new ManagementObjectSearcher(
                     $"SELECT * FROM Win32_Volume WHERE DriveLetter = '{letter}'");
                 using var volumes = searcher.Get();
-                foreach (ManagementObject vol in volumes)
+                foreach (var o in volumes)
                 {
+                    var vol = (ManagementObject)o;
                     try
                     {
                         uint size = clusterSize > 0 ? clusterSize : 4096;
-                        object[] args = { fileSystem, quickFormat, size, volumeLabel ?? string.Empty, enableCompression };
+                        object[] args = [fileSystem, quickFormat, size, volumeLabel ?? string.Empty, enableCompression];
                         result = (uint)vol.InvokeMethod("Format", args);
                     }
                     finally
@@ -225,6 +372,120 @@ public static class DriveService
         catch
         {
             return 0;
+        }
+    }
+
+    /// <summary>Opens Windows Disk Management (diskmgmt.msc) for partition and drive letter management.</summary>
+    public static void OpenDiskManagement()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "diskmgmt.msc",
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Ignore if shell execute fails
+        }
+    }
+
+    /// <summary>
+    /// Tries to assign a new drive letter to the volume that currently has the given letter.
+    /// Uses diskpart; may require administrator rights. Use <see cref="OpenDiskManagement"/> if this fails.
+    /// </summary>
+    /// <param name="currentLetter">Current drive letter (e.g. "D" or "D:").</param>
+    /// <param name="newLetter">New drive letter (e.g. "Z" or "Z:").</param>
+    /// <returns>True if diskpart reported success; false otherwise.</returns>
+    public static bool TryAssignDriveLetter(string currentLetter, string newLetter)
+    {
+        var cur = (currentLetter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
+        var @new = (newLetter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
+        if (cur.Length != 1 || @new.Length != 1 || cur == @new)
+            return false;
+        if (cur[0] < 'A' || cur[0] > 'Z' || @new[0] < 'A' || @new[0] > 'Z')
+            return false;
+        try
+        {
+            string diskpartPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "diskpart.exe");
+            if (!File.Exists(diskpartPath))
+                return false;
+
+            int? volumeNumber = GetVolumeNumberFromDiskPart(diskpartPath, cur);
+            if (volumeNumber == null)
+                return false;
+
+            var script = $"select volume {volumeNumber}\r\nassign letter={@new}\r\n";
+            var scriptPath = Path.Combine(Path.GetTempPath(), $"dw_assign_{Guid.NewGuid():N}.txt");
+            File.WriteAllText(scriptPath, script);
+            try
+            {
+                using var p = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = diskpartPath,
+                        Arguments = $"/s \"{scriptPath}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+                p.Start();
+                p.WaitForExit(15000);
+                return p.ExitCode == 0;
+            }
+            finally
+            {
+                try { File.Delete(scriptPath); } catch { /* ignore */ }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Runs diskpart "list volume", parses output for the given drive letter, returns Volume ### or null.</summary>
+    private static int? GetVolumeNumberFromDiskPart(string diskpartPath, string driveLetter)
+    {
+        var script = "list volume\r\n";
+        var scriptPath = Path.Combine(Path.GetTempPath(), $"dw_list_{Guid.NewGuid():N}.txt");
+        File.WriteAllText(scriptPath, script);
+        try
+        {
+            using var p = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = diskpartPath,
+                    Arguments = $"/s \"{scriptPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true
+                }
+            };
+            p.Start();
+            string output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(10000);
+
+            // Lines like "  Volume 3     E   ..." or "  Volume 0     D   ..." - find line containing " D " (space + letter + space)
+            string match = $" {driveLetter} ";
+            foreach (var line in output.Split('\n'))
+            {
+                if (line.Contains(match, StringComparison.OrdinalIgnoreCase))
+                {
+                    var volMatch = System.Text.RegularExpressions.Regex.Match(line, @"Volume\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (volMatch.Success && int.TryParse(volMatch.Groups[1].Value, out int num))
+                        return num;
+                }
+            }
+            return null;
+        }
+        finally
+        {
+            try { File.Delete(scriptPath); } catch { /* ignore */ }
         }
     }
 

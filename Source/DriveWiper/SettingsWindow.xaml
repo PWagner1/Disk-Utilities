@@ -1,0 +1,59 @@
+<Window
+    x:Class="DriveWiper.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Settings">
+
+    <Grid Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Title bar: Mica shows through; this element is the drag region -->
+        <Grid x:Name="SettingsTitleBar" Grid.Row="0" Height="48" Background="Transparent" Padding="24,0,24,0" VerticalAlignment="Top">
+            <TextBlock Text="Settings" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </Grid>
+
+        <Grid Grid.Row="1" Background="Transparent" Padding="24" RowSpacing="16" ColumnSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Diagram colours" FontWeight="SemiBold" FontSize="14" />
+        <TextBlock Grid.Row="1" Text="Choose colours for the drive layout diagram. Changes apply when you save." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
+
+        <StackPanel Grid.Row="2" Spacing="6">
+            <TextBlock Text="Formattable partitions" FontWeight="SemiBold" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <ComboBox x:Name="FormattableColourCombo" Width="180" SelectionChanged="ColourCombo_SelectionChanged" />
+                <Border x:Name="FormattableColourPreview" Width="40" Height="28" CornerRadius="4" BorderBrush="Gray" BorderThickness="1" />
+            </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Row="3" Spacing="6">
+            <TextBlock Text="System drive (C:)" FontWeight="SemiBold" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <ComboBox x:Name="SystemDriveColourCombo" Width="180" SelectionChanged="ColourCombo_SelectionChanged" />
+                <Border x:Name="SystemDriveColourPreview" Width="40" Height="28" CornerRadius="4" BorderBrush="Gray" BorderThickness="1" />
+            </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Row="4" Spacing="6">
+            <TextBlock Text="No drive letter" FontWeight="SemiBold" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <ComboBox x:Name="NoLetterColourCombo" Width="180" SelectionChanged="ColourCombo_SelectionChanged" />
+                <Border x:Name="NoLetterColourPreview" Width="40" Height="28" CornerRadius="4" BorderBrush="Gray" BorderThickness="1" />
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+            <Button x:Name="SaveButton" Content="Save" Click="SaveButton_Click" />
+            <Button x:Name="CancelButton" Content="Cancel" Click="CancelButton_Click" />
+        </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

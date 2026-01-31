@@ -14,7 +14,7 @@ public partial class App : Application
     }
 
     /// <summary>Invoked when the application is launched. Creates and activates the main window.</summary>
-    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         m_window = new MainWindow();
         m_window.Activate();
