@@ -7,7 +7,7 @@ public sealed partial class SmartStatsWindow : Window
         InitializeComponent();
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
-        LoadSmartDrives();
+        _ = LoadSmartDrivesAsync();
     }
 
     private void TrySetMicaBackdrop()
@@ -15,9 +15,14 @@ public sealed partial class SmartStatsWindow : Window
         try
         {
             if (MicaController.IsSupported())
+            {
                 SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+            }
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
     private void TrySetExtendedTitleBar()
@@ -27,17 +32,43 @@ public sealed partial class SmartStatsWindow : Window
             ExtendsContentIntoTitleBar = true;
             SetTitleBar(AppTitleBar);
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
     }
 
-    private void LoadSmartDrives()
+    private async Task LoadSmartDrivesAsync()
     {
-        var drives = SmartService.GetSmartDrives();
-        SmartDriveCombo.Items.Clear();
-        foreach (var d in drives)
-            SmartDriveCombo.Items.Add(d);
-        if (SmartDriveCombo.Items.Count > 0)
-            SmartDriveCombo.SelectedIndex = 0;
+        RefreshSmartButton.IsEnabled = false;
+        SmartHealthText.Text = "Loading...";
+
+        try
+        {
+            var drives = await SmartService.GetSmartDrivesAsync();
+            SmartDriveCombo.Items.Clear();
+            foreach (var d in drives)
+            {
+                SmartDriveCombo.Items.Add(d);
+            }
+
+            if (SmartDriveCombo.Items.Count > 0)
+            {
+                SmartDriveCombo.SelectedIndex = 0;
+            }
+            else
+            {
+                SmartHealthText.Text = "No S.M.A.R.T. drives found";
+            }
+        }
+        catch (Exception ex)
+        {
+            SmartHealthText.Text = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            RefreshSmartButton.IsEnabled = true;
+        }
     }
 
     private void SmartDriveCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -54,8 +85,8 @@ public sealed partial class SmartStatsWindow : Window
         }
     }
 
-    private void RefreshSmartButton_Click(object sender, RoutedEventArgs e)
+    private async void RefreshSmartButton_Click(object sender, RoutedEventArgs e)
     {
-        LoadSmartDrives();
+        await LoadSmartDrivesAsync();
     }
 }

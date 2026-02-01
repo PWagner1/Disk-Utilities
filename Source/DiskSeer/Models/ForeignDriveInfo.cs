@@ -15,7 +15,7 @@ public class ForeignDriveInfo
     public ulong Size { get; set; }
 
     /// <summary>List of partitions on this drive.</summary>
-    public List<ForeignPartitionInfo> Partitions { get; set; } = new();
+    public List<ForeignPartitionInfo> Partitions { get; set; } = [];
 
     /// <summary>Display text for UI.</summary>
     public string DisplayText => $"Disk {DriveIndex}: {Model} ({FormatSize(Size)})";

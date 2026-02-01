@@ -6,10 +6,10 @@ namespace DiskSeer.Models;
 public class BreadcrumbItem
 {
     /// <summary>Display name for the breadcrumb.</summary>
-    public string Name { get; set; } = string.Empty;
+    public string Name { get; set; }
 
     /// <summary>Full path this breadcrumb represents.</summary>
-    public string Path { get; set; } = string.Empty;
+    public string Path { get; set; }
 
     /// <summary>Creates a new breadcrumb item.</summary>
     public BreadcrumbItem(string name, string path)

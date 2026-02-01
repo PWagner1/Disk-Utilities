@@ -16,7 +16,7 @@ public sealed class DiskInfo
     public ulong Size { get; set; }
 
     /// <summary>Partitions on this disk, in order.</summary>
-    public List<PartitionInfo> Partitions { get; set; } = new();
+    public List<PartitionInfo> Partitions { get; set; } = [];
 
     /// <summary>Short display caption (e.g. "Disk 0 - 500 GB").</summary>
     public string DisplayCaption => $"Disk {DiskIndex} - {FormattedSize}";
@@ -26,7 +26,7 @@ public sealed class DiskInfo
 
     private static string FormatBytes(ulong bytes)
     {
-        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
         int order = 0;
         double len = bytes;
         while (len >= 1024 && order < sizes.Length - 1) { order++; len /= 1024; }

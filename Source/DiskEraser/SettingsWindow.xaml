@@ -21,28 +21,36 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="Diagram colours" FontWeight="SemiBold" FontSize="14" />
-        <TextBlock Grid.Row="1" Text="Choose colours for the drive layout diagram. Changes apply when you save." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
+        <TextBlock Grid.Row="0" Text="Appearance" FontWeight="SemiBold" FontSize="14" />
+        <StackPanel Grid.Row="1" Spacing="6">
+            <TextBlock Text="Theme" FontWeight="SemiBold" />
+            <ComboBox x:Name="ThemeCombo" Width="200" HorizontalAlignment="Left" />
+        </StackPanel>
 
-        <StackPanel Grid.Row="2" Spacing="6">
+        <TextBlock Grid.Row="2" Text="Diagram colours" FontWeight="SemiBold" FontSize="14" />
+        <TextBlock Grid.Row="3" Text="Choose colours for the drive layout diagram. Changes apply when you save." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
+
+        <StackPanel Grid.Row="4" Spacing="6">
             <TextBlock Text="Formattable partitions" FontWeight="SemiBold" />
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <ComboBox x:Name="FormattableColourCombo" Width="180" SelectionChanged="ColourCombo_SelectionChanged" />
                 <Border x:Name="FormattableColourPreview" Width="40" Height="28" CornerRadius="4" BorderBrush="Gray" BorderThickness="1" />
             </StackPanel>
         </StackPanel>
-        <StackPanel Grid.Row="3" Spacing="6">
+        <StackPanel Grid.Row="5" Spacing="6">
             <TextBlock Text="System drive (C:)" FontWeight="SemiBold" />
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <ComboBox x:Name="SystemDriveColourCombo" Width="180" SelectionChanged="ColourCombo_SelectionChanged" />
                 <Border x:Name="SystemDriveColourPreview" Width="40" Height="28" CornerRadius="4" BorderBrush="Gray" BorderThickness="1" />
             </StackPanel>
         </StackPanel>
-        <StackPanel Grid.Row="4" Spacing="6">
+        <StackPanel Grid.Row="6" Spacing="6">
             <TextBlock Text="No drive letter" FontWeight="SemiBold" />
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <ComboBox x:Name="NoLetterColourCombo" Width="180" SelectionChanged="ColourCombo_SelectionChanged" />
@@ -50,7 +58,7 @@
             </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="7" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
             <Button x:Name="SaveButton" Content="Save" Click="SaveButton_Click" />
             <Button x:Name="CancelButton" Content="Cancel" Click="CancelButton_Click" />
         </StackPanel>

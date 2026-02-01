@@ -6,9 +6,9 @@ namespace DiskSeer;
 public sealed partial class MainWindow : Window
 {
     private readonly ForeignDriveService _driveService = new();
-    private IReadOnlyList<ForeignDriveInfo> _drives = Array.Empty<ForeignDriveInfo>();
-    private IReadOnlyList<FileSystemEntry> _currentEntries = Array.Empty<FileSystemEntry>();
-    private IReadOnlyList<FileSystemEntry> _filteredEntries = Array.Empty<FileSystemEntry>();
+    private IReadOnlyList<ForeignDriveInfo> _drives = [];
+    private IReadOnlyList<FileSystemEntry> _currentEntries = [];
+    private IReadOnlyList<FileSystemEntry> _filteredEntries = [];
 
     private string _currentPath = "/";
     private readonly Stack<string> _backHistory = new();
@@ -50,18 +50,20 @@ public sealed partial class MainWindow : Window
 
     #region Drive Selection
 
-    private void RefreshDrives()
+    private async void RefreshDrives()
     {
-        StatusText.Text = "Scanning for drives with foreign file systems...";
+        StatusText.Text = "Scanning drives (multicore)...";
+        RefreshDrivesButton.IsEnabled = false;
 
         try
         {
-            _drives = ForeignDriveService.GetAllPhysicalDrives();
+            // Use parallel drive detection on the thread pool to keep UI responsive
+            _drives = await ForeignDriveService.GetAllPhysicalDrivesAsync();
+
             DriveCombo.Items.Clear();
 
             foreach (var drive in _drives)
             {
-                // Count foreign partitions
                 int foreignCount = drive.Partitions.Count(p => p.FileSystemType != ForeignFileSystemType.Unknown);
                 string suffix = foreignCount > 0 ? $" ({foreignCount} foreign partition{(foreignCount > 1 ? "s" : "")})" : " (no foreign partitions)";
 
@@ -74,9 +76,17 @@ public sealed partial class MainWindow : Window
 
             StatusText.Text = $"Found {_drives.Count} physical drive{(_drives.Count != 1 ? "s" : "")}";
         }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "Scan cancelled";
+        }
         catch (Exception ex)
         {
             StatusText.Text = $"Error scanning drives: {ex.Message}";
+        }
+        finally
+        {
+            RefreshDrivesButton.IsEnabled = true;
         }
     }
 
@@ -149,7 +159,9 @@ public sealed partial class MainWindow : Window
     private async void OpenPartitionButton_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedDrive == null || _selectedPartition == null)
+        {
             return;
+        }
 
         ShowLoading("Opening partition...");
 
@@ -232,7 +244,11 @@ public sealed partial class MainWindow : Window
 
             foreach (var part in parts)
             {
-                if (string.IsNullOrEmpty(part)) continue;
+                if (string.IsNullOrEmpty(part))
+                {
+                    continue;
+                }
+
                 currentBuildPath += "/" + part;
                 items.Add(new BreadcrumbItem(part, currentBuildPath));
             }
@@ -270,13 +286,18 @@ public sealed partial class MainWindow : Window
 
     private async void UpButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentPath == "/") return;
+        if (_currentPath == "/")
+        {
+            return;
+        }
 
         var parentPath = Path.GetDirectoryName(_currentPath.Replace('/', Path.DirectorySeparatorChar))
             ?.Replace(Path.DirectorySeparatorChar, '/') ?? "/";
 
         if (string.IsNullOrEmpty(parentPath) || !parentPath.StartsWith('/'))
+        {
             parentPath = "/";
+        }
 
         _backHistory.Push(_currentPath);
         _forwardHistory.Clear();
@@ -382,10 +403,18 @@ public sealed partial class MainWindow : Window
         long totalSize = entries.Where(e => !e.IsDirectory).Sum(e => e.Size);
 
         string itemsText = "";
-        if (files > 0) itemsText += $"{files} file{(files != 1 ? "s" : "")}";
+        if (files > 0)
+        {
+            itemsText += $"{files} file{(files != 1 ? "s" : "")}";
+        }
+
         if (folders > 0)
         {
-            if (files > 0) itemsText += ", ";
+            if (files > 0)
+            {
+                itemsText += ", ";
+            }
+
             itemsText += $"{folders} folder{(folders != 1 ? "s" : "")}";
         }
 
@@ -493,7 +522,10 @@ public sealed partial class MainWindow : Window
     private async void CopyToLocalMenuItem_Click(object sender, RoutedEventArgs e)
     {
         var selectedItems = FileListView.SelectedItems.Cast<FileSystemEntry>().ToList();
-        if (selectedItems.Count == 0) return;
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
 
         var picker = new FolderPicker();
         picker.SuggestedStartLocation = PickerLocationId.Downloads;
@@ -503,45 +535,70 @@ public sealed partial class MainWindow : Window
         InitializeWithWindow.Initialize(picker, hWnd);
 
         var folder = await picker.PickSingleFolderAsync();
-        if (folder == null) return;
+        if (folder == null)
+        {
+            return;
+        }
 
         ShowOperationProgress();
         _operationCts = new CancellationTokenSource();
+        var token = _operationCts.Token;
 
         try
         {
-            int completed = 0;
-            foreach (var entry in selectedItems)
+            var filesOnly = selectedItems.Where(e => !e.IsDirectory).ToList();
+            var dirs = selectedItems.Where(e => e.IsDirectory).ToList();
+
+            // Multicore: batch copy multiple files concurrently (limited parallelism to avoid overwhelming disk)
+            if (filesOnly.Count > 1)
             {
-                if (_operationCts.Token.IsCancellationRequested) break;
-
-                StatusText.Text = $"Copying {entry.Name}... ({completed + 1}/{selectedItems.Count})";
-
-                var destPath = Path.Combine(folder.Path, entry.Name);
-
-                if (entry.IsDirectory)
-                {
-                    await CopyDirectoryToLocalAsync(entry.FullPath, destPath);
-                }
-                else
-                {
-                    await _driveService.CopyFileToLocalAsync(
-                        entry.FullPath,
-                        destPath,
-                        new Progress<(long copied, long total)>(p =>
+                var pairs = filesOnly.Select(f => (f.FullPath, Path.Combine(folder.Path, f.Name))).ToList();
+                await _driveService.CopyFilesToLocalAsync(
+                    pairs,
+                    maxConcurrency: ForeignDriveService.DefaultCopyParallelism,
+                    new Progress<(int completed, int total)>(p =>
+                    {
+                        DispatcherQueue.TryEnqueue(() =>
                         {
-                            DispatcherQueue.TryEnqueue(() =>
-                            {
-                                OperationProgress.Value = p.total > 0 ? (double)p.copied / p.total * 100 : 0;
-                            });
-                        }),
-                        _operationCts.Token);
+                            StatusText.Text = $"Copying... ({p.completed}/{p.total} files)";
+                            OperationProgress.Value = p.total > 0 ? (double)p.completed / p.total * 100 : 0;
+                        });
+                    }),
+                    token);
+            }
+            else if (filesOnly.Count == 1)
+            {
+                StatusText.Text = $"Copying {filesOnly[0].Name}...";
+                await _driveService.CopyFileToLocalAsync(
+                    filesOnly[0].FullPath,
+                    Path.Combine(folder.Path, filesOnly[0].Name),
+                    new Progress<(long copied, long total)>(p =>
+                    {
+                        DispatcherQueue.TryEnqueue(() =>
+                        {
+                            OperationProgress.Value = p.total > 0 ? (double)p.copied / p.total * 100 : 0;
+                        });
+                    }),
+                    token);
+            }
+
+            // Directories: copy sequentially (each is recursive)
+            int completed = filesOnly.Count;
+            foreach (var entry in dirs)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    break;
                 }
 
+                DispatcherQueue.TryEnqueue(() => StatusText.Text = $"Copying {entry.Name}... ({completed + 1}/{selectedItems.Count})");
+                var destPath = Path.Combine(folder.Path, entry.Name);
+                await CopyDirectoryToLocalAsync(entry.FullPath, destPath);
                 completed++;
             }
 
-            StatusText.Text = $"Copied {completed} item{(completed != 1 ? "s" : "")} to {folder.Path}";
+            DispatcherQueue.TryEnqueue(() =>
+                StatusText.Text = $"Copied {completed} item{(completed != 1 ? "s" : "")} to {folder.Path}");
         }
         catch (OperationCanceledException)
         {
@@ -591,25 +648,42 @@ public sealed partial class MainWindow : Window
         InitializeWithWindow.Initialize(picker, hWnd);
 
         var files = await picker.PickMultipleFilesAsync();
-        if (files == null || files.Count == 0) return;
+        if (files == null || files.Count == 0)
+        {
+            return;
+        }
 
         ShowOperationProgress();
         _operationCts = new CancellationTokenSource();
+        var token = _operationCts.Token;
 
         try
         {
-            int completed = 0;
-            foreach (var file in files)
+            var basePath = _currentPath.TrimEnd('/');
+            var pairs = files.Select(f => (SourcePath: f.Path, DestPath: basePath + "/" + f.Name)).ToList();
+
+            if (pairs.Count > 1)
             {
-                if (_operationCts.Token.IsCancellationRequested) break;
-
-                StatusText.Text = $"Copying {file.Name}... ({completed + 1}/{files.Count})";
-
-                var destPath = _currentPath.TrimEnd('/') + "/" + file.Name;
-
+                await _driveService.CopyFilesFromLocalAsync(
+                    pairs,
+                    maxConcurrency: ForeignDriveService.DefaultCopyParallelism,
+                    new Progress<(int completed, int total)>(p =>
+                    {
+                        DispatcherQueue.TryEnqueue(() =>
+                        {
+                            StatusText.Text = $"Copying... ({p.completed}/{p.total} files)";
+                            OperationProgress.Value = p.total > 0 ? (double)p.completed / p.total * 100 : 0;
+                        });
+                    }),
+                    token);
+            }
+            else if (pairs.Count == 1)
+            {
+                var (src, dest) = pairs[0];
+                StatusText.Text = $"Copying {Path.GetFileName(src)}...";
                 await _driveService.CopyFileFromLocalAsync(
-                    file.Path,
-                    destPath,
+                    src,
+                    dest,
                     new Progress<(long copied, long total)>(p =>
                     {
                         DispatcherQueue.TryEnqueue(() =>
@@ -617,12 +691,10 @@ public sealed partial class MainWindow : Window
                             OperationProgress.Value = p.total > 0 ? (double)p.copied / p.total * 100 : 0;
                         });
                     }),
-                    _operationCts.Token);
-
-                completed++;
+                    token);
             }
 
-            StatusText.Text = $"Copied {completed} file{(completed != 1 ? "s" : "")}";
+            StatusText.Text = $"Copied {pairs.Count} file{(pairs.Count != 1 ? "s" : "")}";
             await LoadDirectoryAsync(_currentPath);
         }
         catch (OperationCanceledException)
@@ -677,7 +749,10 @@ public sealed partial class MainWindow : Window
 
     private async void RenameMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (FileListView.SelectedItem is not FileSystemEntry entry) return;
+        if (FileListView.SelectedItem is not FileSystemEntry entry)
+        {
+            return;
+        }
 
         var nameBox = new TextBox { Text = entry.Name };
 
@@ -719,7 +794,10 @@ public sealed partial class MainWindow : Window
     private async void DeleteMenuItem_Click(object sender, RoutedEventArgs e)
     {
         var selectedItems = FileListView.SelectedItems.Cast<FileSystemEntry>().ToList();
-        if (selectedItems.Count == 0) return;
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
 
         var dialog = new ContentDialog
         {
@@ -740,7 +818,7 @@ public sealed partial class MainWindow : Window
                 {
                     if (entry.IsDirectory)
                     {
-                        _driveService.DeleteDirectory(entry.FullPath, true);
+                        _driveService.DeleteDirectory(entry.FullPath);
                     }
                     else
                     {
@@ -760,7 +838,10 @@ public sealed partial class MainWindow : Window
 
     private async void PropertiesMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        if (FileListView.SelectedItem is not FileSystemEntry entry) return;
+        if (FileListView.SelectedItem is not FileSystemEntry entry)
+        {
+            return;
+        }
 
         var content = new StackPanel { Spacing = 8 };
         content.Children.Add(new TextBlock { Text = $"Name: {entry.Name}" });
@@ -769,7 +850,10 @@ public sealed partial class MainWindow : Window
         content.Children.Add(new TextBlock { Text = $"Size: {(entry.IsDirectory ? "-" : FormatSize(entry.Size))}" });
         content.Children.Add(new TextBlock { Text = $"Modified: {entry.LastModified:yyyy-MM-dd HH:mm:ss}" });
         if (entry.CreationTime.HasValue)
+        {
             content.Children.Add(new TextBlock { Text = $"Created: {entry.CreationTime:yyyy-MM-dd HH:mm:ss}" });
+        }
+
         content.Children.Add(new TextBlock { Text = $"Permissions: {entry.Permissions}" });
 
         var dialog = new ContentDialog

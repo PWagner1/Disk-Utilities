@@ -68,7 +68,11 @@ public class FileSystemEntry
 
     private static string FormatSize(long bytes)
     {
-        if (bytes < 0) return "";
+        if (bytes < 0)
+        {
+            return "";
+        }
+
         string[] sizes = ["B", "KB", "MB", "GB", "TB"];
         double len = bytes;
         int order = 0;

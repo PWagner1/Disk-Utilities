@@ -22,7 +22,9 @@ public sealed partial class MainWindow : Window
         try
         {
             if (MicaController.IsSupported())
+            {
                 SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+            }
         }
         catch
         {
@@ -49,15 +51,22 @@ public sealed partial class MainWindow : Window
         var drives = RecoveryService.GetScannableDrives();
         DriveCombo.Items.Clear();
         foreach (var d in drives)
+        {
             DriveCombo.Items.Add(d);
+        }
+
         if (DriveCombo.Items.Count > 0)
+        {
             DriveCombo.SelectedIndex = 0;
+        }
     }
 
     private void DriveCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (DriveCombo.SelectedItem is ScannableDrive info)
+        {
             _selectedDrive = info.Letter;
+        }
     }
 
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
@@ -89,7 +98,9 @@ public sealed partial class MainWindow : Window
         {
             var results = await RecoveryService.ScanForRecoverableFilesAsync(_selectedDrive, progress, ct);
             foreach (var f in results)
+            {
                 _files.Add(f);
+            }
 
             FileListView.ItemsSource = _files;
             FileCountText.Text = $"{_files.Count} files found";
@@ -112,9 +123,13 @@ public sealed partial class MainWindow : Window
             ScanButton.IsEnabled = true;
             ProgressBar.Visibility = Visibility.Collapsed;
             if (_files.Count == 0)
+            {
                 StatusText.Text = "Scan complete. No recoverable files found.";
+            }
             else
+            {
                 StatusText.Text = $"Scan complete. Found {_files.Count} potentially recoverable files.";
+            }
         }
     }
 
@@ -138,7 +153,9 @@ public sealed partial class MainWindow : Window
     {
         bool check = SelectAllCheck.IsChecked == true;
         foreach (var f in _files)
+        {
             f.IsSelected = check;
+        }
     }
 
     private void FileListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -219,15 +236,24 @@ public sealed partial class MainWindow : Window
         window.Activate();
     }
 
-    private async System.Threading.Tasks.Task ShowMessageAsync(string message)
+    private async Task ShowMessageAsync(string message)
     {
-        var dialog = new ContentDialog
+        try
         {
-            Title = "Disk Health",
-            Content = message,
-            CloseButtonText = "OK",
-            XamlRoot = Content.XamlRoot
-        };
-        await dialog.ShowAsync();
+            if (Content?.XamlRoot == null)
+                throw new InvalidOperationException("Window not ready");
+            var dialog = new ContentDialog
+            {
+                Title = "Disk Health",
+                Content = message,
+                CloseButtonText = "OK",
+                XamlRoot = Content.XamlRoot
+            };
+            await dialog.ShowAsync();
+        }
+        catch
+        {
+            App.ShowMessageBox("Disk Health", message);
+        }
     }
 }

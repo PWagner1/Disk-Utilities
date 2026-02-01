@@ -1,8 +1,3 @@
-using System.Diagnostics;
-using System.Management;
-using System.Security.Cryptography;
-using DiskEraser.Models;
-
 namespace DiskEraser.Services;
 
 /// <summary>
@@ -31,11 +26,11 @@ public static class DriveService
     /// ext, APFS, HFS, etc. are listed for completeness; formatting them on Windows usually returns "Unsupported file system" unless third-party tools are used.
     /// </summary>
     public static readonly string[] SupportedFileSystems =
-    {
+    [
         "NTFS", "FAT32", "FAT", "exFAT", "ReFS",
         "ext2", "ext3", "ext4", "Btrfs", "XFS",
         "HFS", "HFS+", "APFS"
-    };
+    ];
 
     /// <summary>
     /// Enumerates all logical volumes that have a drive letter and are safe to list for formatting.
@@ -75,6 +70,10 @@ public static class DriveService
         return list;
     }
 
+    /// <summary>Runs <see cref="GetFormattableDrives"/> on a thread-pool thread for non-blocking UI.</summary>
+    public static Task<IReadOnlyList<DriveItem>> GetFormattableDrivesAsync(CancellationToken cancellationToken = default)
+        => Task.Run(GetFormattableDrives, cancellationToken);
+
     /// <summary>
     /// Gets the physical disk and partition layout for the diagram.
     /// Uses Win32_DiskDrive, Win32_DiskPartition, Win32_LogicalDiskToPartition, and Win32_Volume.
@@ -101,7 +100,7 @@ public static class DriveService
                     DiskIndex = diskIndex,
                     Model = model,
                     Size = diskSize,
-                    Partitions = new List<PartitionInfo>()
+                    Partitions = []
                 };
 
                 string diskPath = disk["DeviceID"]?.ToString() ?? string.Empty;
@@ -172,6 +171,10 @@ public static class DriveService
         return disks;
     }
 
+    /// <summary>Runs <see cref="GetDiskPartitionLayout"/> on a thread-pool thread for non-blocking UI.</summary>
+    public static Task<IReadOnlyList<DiskInfo>> GetDiskPartitionLayoutAsync(CancellationToken cancellationToken = default)
+        => Task.Run(GetDiskPartitionLayout, cancellationToken);
+
     /// <summary>Builds a map of drive letter to volume label, file system, and capacity from Win32_Volume.</summary>
     private static Dictionary<string, (string Label, string FileSystem, ulong Capacity)> GetVolumeInfoByDriveLetter()
     {
@@ -183,7 +186,11 @@ public static class DriveService
             foreach (ManagementBaseObject obj in searcher.Get())
             {
                 var letter = obj["DriveLetter"]?.ToString()?.Trim().ToUpperInvariant();
-                if (string.IsNullOrEmpty(letter)) continue;
+                if (string.IsNullOrEmpty(letter))
+                {
+                    continue;
+                }
+
                 map[letter] = (
                     obj["Label"]?.ToString() ?? string.Empty,
                     obj["FileSystem"]?.ToString() ?? string.Empty,
@@ -210,7 +217,7 @@ public static class DriveService
         IProgress<(int pass, int totalPasses, double percent)>? progress,
         CancellationToken cancellationToken = default)
     {
-        var letter = driveLetter?.Trim().ToUpperInvariant() ?? string.Empty;
+        var letter = driveLetter.Trim().ToUpperInvariant();
         if (!letter.EndsWith(':'))
         {
             letter += ":";
@@ -313,11 +320,11 @@ public static class DriveService
         string fileSystem,
         bool quickFormat,
         uint clusterSize,
-        string volumeLabel,
+        string? volumeLabel,
         bool enableCompression,
         CancellationToken cancellationToken = default)
     {
-        var letter = driveLetter?.Trim().ToUpperInvariant() ?? string.Empty;
+        var letter = driveLetter.Trim().ToUpperInvariant();
         if (!letter.EndsWith(':'))
         {
             letter += ":";
@@ -367,7 +374,7 @@ public static class DriveService
         try
         {
             var di = new DriveInfo(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            return (long)di.AvailableFreeSpace;
+            return di.AvailableFreeSpace;
         }
         catch
         {
@@ -399,38 +406,46 @@ public static class DriveService
     /// <param name="currentLetter">Current drive letter (e.g. "D" or "D:").</param>
     /// <param name="newLetter">New drive letter (e.g. "Z" or "Z:").</param>
     /// <returns>True if diskpart reported success; false otherwise.</returns>
-    public static bool TryAssignDriveLetter(string currentLetter, string newLetter)
+    public static bool TryAssignDriveLetter(string? currentLetter, string? newLetter)
     {
         var cur = (currentLetter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
         var @new = (newLetter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
         if (cur.Length != 1 || @new.Length != 1 || cur == @new)
+        {
             return false;
+        }
+
         if (cur[0] < 'A' || cur[0] > 'Z' || @new[0] < 'A' || @new[0] > 'Z')
+        {
             return false;
+        }
+
         try
         {
             string diskpartPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "diskpart.exe");
             if (!File.Exists(diskpartPath))
+            {
                 return false;
+            }
 
             int? volumeNumber = GetVolumeNumberFromDiskPart(diskpartPath, cur);
             if (volumeNumber == null)
+            {
                 return false;
+            }
 
             var script = $"select volume {volumeNumber}\r\nassign letter={@new}\r\n";
             var scriptPath = Path.Combine(Path.GetTempPath(), $"dw_assign_{Guid.NewGuid():N}.txt");
             File.WriteAllText(scriptPath, script);
             try
             {
-                using var p = new Process
+                using var p = new Process();
+                p.StartInfo = new ProcessStartInfo
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = diskpartPath,
-                        Arguments = $"/s \"{scriptPath}\"",
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
+                    FileName = diskpartPath,
+                    Arguments = $"/s \"{scriptPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
                 p.Start();
                 p.WaitForExit(15000);
@@ -455,23 +470,24 @@ public static class DriveService
         {
             string diskpartPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "diskpart.exe");
             if (!File.Exists(diskpartPath))
+            {
                 return false;
+            }
+
             string script = string.Join("\r\n", commands) + "\r\n";
             var scriptPath = Path.Combine(Path.GetTempPath(), $"dw_script_{Guid.NewGuid():N}.txt");
             File.WriteAllText(scriptPath, script);
             try
             {
-                using var p = new Process
+                using var p = new Process();
+                p.StartInfo = new ProcessStartInfo
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = diskpartPath,
-                        Arguments = $"/s \"{scriptPath}\"",
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = diskpartPath,
+                    Arguments = $"/s \"{scriptPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
                 };
                 p.Start();
                 output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
@@ -496,13 +512,11 @@ public static class DriveService
     }
 
     /// <summary>Creates a primary partition on the given disk. Size in MB; 0 = use all unallocated. May require administrator.</summary>
-    public static bool CreatePartition(int diskIndex, uint sizeMB)
+    public static bool CreatePartition(int diskIndex, uint sizeMb)
     {
         var commands = new List<string> { $"select disk {diskIndex}" };
-        if (sizeMB > 0)
-            commands.Add($"create partition primary size={sizeMB}");
-        else
-            commands.Add("create partition primary");
+        commands.Add(sizeMb > 0 ? $"create partition primary size={sizeMb}" : "create partition primary");
+
         return RunDiskPartScript(commands, out _);
     }
 
@@ -510,65 +524,79 @@ public static class DriveService
     public static bool DeletePartition(int diskIndex, int partitionIndex)
     {
         int? partNum = GetPartitionNumberFromDiskPart(diskIndex, partitionIndex);
-        if (partNum == null) return false;
-        return RunDiskPartScript(new[] { $"select disk {diskIndex}", $"select partition {partNum}", "delete partition" }, out _);
+        return partNum != null && RunDiskPartScript([$"select disk {diskIndex}", $"select partition {partNum}", "delete partition"], out _);
     }
 
     /// <summary>Gets the diskpart partition number (1-based) for the given disk and 0-based partition index. Runs list partition and parses.</summary>
     private static int? GetPartitionNumberFromDiskPart(int diskIndex, int partitionIndex)
     {
-        if (!RunDiskPartScript(new[] { $"select disk {diskIndex}", "list partition" }, out string output))
+        if (!RunDiskPartScript([$"select disk {diskIndex}", "list partition"], out string output))
+        {
             return null;
+        }
+
         var matches = System.Text.RegularExpressions.Regex.Matches(output, @"Partition\s+(\d+)");
         if (partitionIndex >= 0 && partitionIndex < matches.Count)
+        {
             return int.TryParse(matches[partitionIndex].Groups[1].Value, out int num) ? num : null;
+        }
+
         return null;
     }
 
     /// <summary>Extends the volume by the given size in MB. If sizeMB is 0 or null, extends to use all contiguous unallocated space. May require administrator.</summary>
-    public static bool ExtendVolume(int volumeNumber, uint? sizeMB)
+    public static bool ExtendVolume(int volumeNumber, uint? sizeMb)
     {
         var commands = new List<string> { $"select volume {volumeNumber}" };
-        if (sizeMB.HasValue && sizeMB.Value > 0)
-            commands.Add($"extend size={sizeMB}");
+        if (sizeMb.HasValue && sizeMb.Value > 0)
+        {
+            commands.Add($"extend size={sizeMb}");
+        }
         else
+        {
             commands.Add("extend");
+        }
+
         return RunDiskPartScript(commands, out _);
     }
 
     /// <summary>Shrinks the volume by the desired amount in MB. May require administrator.</summary>
-    public static bool ShrinkVolume(int volumeNumber, uint desiredMB)
+    public static bool ShrinkVolume(int volumeNumber, uint desiredMb)
     {
-        if (desiredMB == 0) return false;
-        return RunDiskPartScript(new[] { $"select volume {volumeNumber}", $"shrink desired={desiredMB}" }, out _);
+        return desiredMb != 0 && RunDiskPartScript([$"select volume {volumeNumber}", $"shrink desired={desiredMb}"], out _);
     }
 
     /// <summary>Assigns a drive letter to a partition (by disk and partition index). May require administrator.</summary>
-    public static bool AssignLetterToPartition(int diskIndex, int partitionIndex, string letter)
+    public static bool AssignLetterToPartition(int diskIndex, int partitionIndex, string? letter)
     {
         var l = (letter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
-        if (l.Length != 1 || l[0] < 'A' || l[0] > 'Z') return false;
+        if (l.Length != 1 || l[0] < 'A' || l[0] > 'Z')
+        {
+            return false;
+        }
+
         int? partNum = GetPartitionNumberFromDiskPart(diskIndex, partitionIndex);
-        if (partNum == null) return false;
-        return RunDiskPartScript(new[] { $"select disk {diskIndex}", $"select partition {partNum}", "assign letter=" + l }, out _);
+        return partNum != null && RunDiskPartScript([$"select disk {diskIndex}", $"select partition {partNum}", "assign letter=" + l], out _);
     }
 
     /// <summary>Gets the volume number (for diskpart) for the given drive letter (e.g. "D" or "D:"). Returns null if not found.</summary>
-    public static int? GetVolumeNumberForDriveLetter(string driveLetter)
+    public static int? GetVolumeNumberForDriveLetter(string? driveLetter)
     {
         var letter = (driveLetter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
-        if (letter.Length != 1) return null;
-        return GetVolumeNumberFromDiskPart(GetDiskPartPath(), letter);
+        return letter.Length != 1 ? null : GetVolumeNumberFromDiskPart(GetDiskPartPath(), letter);
     }
 
     /// <summary>Removes the drive letter from the volume. May require administrator.</summary>
-    public static bool RemoveDriveLetter(string driveLetter)
+    public static bool RemoveDriveLetter(string? driveLetter)
     {
         var letter = (driveLetter ?? string.Empty).Trim().ToUpperInvariant().TrimEnd(':');
-        if (letter.Length != 1 || letter == "C") return false;
+        if (letter.Length != 1 || letter == "C")
+        {
+            return false;
+        }
+
         int? volNum = GetVolumeNumberFromDiskPart(GetDiskPartPath(), letter);
-        if (volNum == null) return false;
-        return RunDiskPartScript(new[] { $"select volume {volNum}", "remove letter=" + letter }, out _);
+        return volNum != null && RunDiskPartScript([$"select volume {volNum}", "remove letter=" + letter], out _);
     }
 
     private static string GetDiskPartPath()
@@ -584,16 +612,14 @@ public static class DriveService
         File.WriteAllText(scriptPath, script);
         try
         {
-            using var p = new Process
+            using var p = new Process();
+            p.StartInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = diskpartPath,
-                    Arguments = $"/s \"{scriptPath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true
-                }
+                FileName = diskpartPath,
+                Arguments = $"/s \"{scriptPath}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
             };
             p.Start();
             string output = p.StandardOutput.ReadToEnd();
@@ -607,7 +633,9 @@ public static class DriveService
                 {
                     var volMatch = System.Text.RegularExpressions.Regex.Match(line, @"Volume\s+(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                     if (volMatch.Success && int.TryParse(volMatch.Groups[1].Value, out int num))
+                    {
                         return num;
+                    }
                 }
             }
             return null;

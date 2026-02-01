@@ -1,13 +1,3 @@
-using System.Linq;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Windowing;
-using Microsoft.UI.Composition.SystemBackdrops;
-using DiskEraser.Models;
-using DiskEraser.Services;
-
 namespace DiskEraser;
 
 /// <summary>
@@ -16,16 +6,18 @@ namespace DiskEraser;
 /// </summary>
 public sealed partial class PartitionManagementWindow : Window
 {
-    private IReadOnlyList<DiskInfo> _disks = Array.Empty<DiskInfo>();
-    private readonly List<PartitionListEntry> _partitionEntries = [];
+    private IReadOnlyList<DiskInfo> _disks = [];
+    private readonly ObservableCollection<PartitionListEntry> _partitionEntries = [];
 
     public PartitionManagementWindow()
     {
         InitializeComponent();
+        App.ApplyTheme(this);
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
-        TrySetWindowSize(782, 480);
-        RefreshDisks();
+        TrySetWindowSize(1245, 700);
+        PartitionList.ItemsSource = _partitionEntries;
+        _ = LoadDisksAsync();
     }
 
     private void TrySetMicaBackdrop()
@@ -33,7 +25,9 @@ public sealed partial class PartitionManagementWindow : Window
         try
         {
             if (MicaController.IsSupported())
+            {
                 SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+            }
         }
         catch { /* ignore */ }
     }
@@ -56,11 +50,50 @@ public sealed partial class PartitionManagementWindow : Window
     {
         try
         {
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var hwnd = WindowNative.GetWindowHandle(this);
+            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
             AppWindow.GetFromWindowId(windowId).Resize(new Windows.Graphics.SizeInt32(width, height));
         }
         catch { /* ignore */ }
+    }
+
+    /// <summary>Loads disk layout on a thread-pool thread, then updates UI on the dispatcher.</summary>
+    private async Task LoadDisksAsync()
+    {
+        IReadOnlyList<DiskInfo> disks;
+        try
+        {
+            disks = await DriveService.GetDiskPartitionLayoutAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            disks = [];
+        }
+
+        var queue = DispatcherQueue;
+        if (queue == null)
+        {
+            return;
+        }
+
+        queue.TryEnqueue(() =>
+        {
+            _disks = disks;
+            DiskCombo.Items.Clear();
+            foreach (var d in _disks)
+            {
+                DiskCombo.Items.Add(d);
+            }
+
+            if (_disks.Count > 0)
+            {
+                DiskCombo.SelectedIndex = 0;
+            }
+            else
+            {
+                _partitionEntries.Clear();
+            }
+        });
     }
 
     private void RefreshDisks()
@@ -68,11 +101,18 @@ public sealed partial class PartitionManagementWindow : Window
         _disks = DriveService.GetDiskPartitionLayout();
         DiskCombo.Items.Clear();
         foreach (var d in _disks)
+        {
             DiskCombo.Items.Add(d);
+        }
+
         if (_disks.Count > 0)
+        {
             DiskCombo.SelectedIndex = 0;
+        }
         else
-            PartitionList.ItemsSource = null;
+        {
+            _partitionEntries.Clear();
+        }
     }
 
     private void DiskCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -80,8 +120,12 @@ public sealed partial class PartitionManagementWindow : Window
         _partitionEntries.Clear();
         if (DiskCombo.SelectedItem is not DiskInfo disk)
         {
-            PartitionList.ItemsSource = null;
             UpdateButtonStates(null);
+            if (PieChartCanvas != null)
+            {
+                PieChartCanvas.Children.Clear();
+            }
+
             return;
         }
         ulong used = 0;
@@ -107,14 +151,217 @@ public sealed partial class PartitionManagementWindow : Window
                 DiskIndex = disk.DiskIndex
             });
         }
-        PartitionList.ItemsSource = _partitionEntries.ToList();
         PartitionList.SelectedIndex = -1;
         UpdateButtonStates(null);
+        _ = BuildPieChartAsync(disk);
+    }
+
+    /// <summary>Slice data computed on a background thread (no UI types).</summary>
+    private readonly record struct PieSliceData(double StartAngleDeg, double SweepDeg, Windows.UI.Color Color, string Label);
+
+    /// <summary>Computes pie slice angles, colors, and labels on a thread-pool thread; UI elements are created on the dispatcher.</summary>
+    private async Task BuildPieChartAsync(DiskInfo disk)
+    {
+        if (PieChartCanvas == null)
+        {
+            return;
+        }
+
+        List<PieSliceData> slices = await Task.Run(() => ComputePieSliceData(disk)).ConfigureAwait(false);
+
+        var queue = DispatcherQueue;
+        if (queue == null)
+        {
+            return;
+        }
+
+        queue.TryEnqueue(() => CreatePieChartFromData(slices));
+    }
+
+    /// <summary>Runs on any thread; returns slice parameters and labels (no UI objects).</summary>
+    private static List<PieSliceData> ComputePieSliceData(DiskInfo disk)
+    {
+        ulong total = disk.Size > 0 ? disk.Size : 1;
+        double startAngleDeg = 0;
+        var slices = new List<PieSliceData>();
+
+        Windows.UI.Color formattable = AppSettings.ParseColor(AppSettings.GetFormattableColour()) ?? Colors.SteelBlue;
+        Windows.UI.Color systemDrive = AppSettings.ParseColor(AppSettings.GetSystemDriveColour()) ?? Colors.OrangeRed;
+        Windows.UI.Color noLetter = AppSettings.ParseColor(AppSettings.GetNoLetterColour()) ?? Colors.Gray;
+        Windows.UI.Color unallocated = Colors.DarkGray;
+
+        foreach (var p in disk.Partitions)
+        {
+            double sweepDeg = 360.0 * (p.Size / (double)total);
+            if (sweepDeg <= 0)
+            {
+                continue;
+            }
+
+            Windows.UI.Color fill = p.IsProtected ? systemDrive : string.IsNullOrEmpty(p.DriveLetter) ? noLetter : formattable;
+            string label = $"{p.DisplayLabel} — {p.FormattedSize} — {p.FileSystem}";
+            slices.Add(new PieSliceData(startAngleDeg, sweepDeg, fill, label));
+            startAngleDeg += sweepDeg;
+        }
+
+        ulong used = disk.Partitions.Aggregate(0UL, (s, p) => s + p.Size);
+        ulong free = disk.Size > used ? disk.Size - used : 0;
+        if (free > 0)
+        {
+            double sweepDeg = 360.0 * (free / (double)total);
+            string label = "Unallocated — " + FormatBytes(free);
+            slices.Add(new PieSliceData(startAngleDeg, sweepDeg, unallocated, label));
+        }
+
+        return slices;
+    }
+
+    /// <summary>Runs on UI thread; creates chart with labels on each slice.</summary>
+    private void CreatePieChartFromData(List<PieSliceData> slices)
+    {
+        if (PieChartCanvas == null)
+        {
+            return;
+        }
+
+        PieChartCanvas.Children.Clear();
+
+        // Canvas is 520×300; center ellipse with 3D tilt (ry < rx).
+        const double cx = 260, cy = 150, rx = 240, ry = 140;
+        foreach (var slice in slices)
+        {
+            AddPieSliceToCanvas(PieChartCanvas, cx, cy, rx, ry, slice.StartAngleDeg, slice.SweepDeg, slice.Color, slice.Label);
+            // Annotate on the chart for slices big enough to read (≥ 20°).
+            if (slice.SweepDeg >= 20.0)
+            {
+                AddSliceLabelToCanvas(PieChartCanvas, cx, cy, rx, ry, slice.StartAngleDeg, slice.SweepDeg, slice.Label);
+            }
+        }
+    }
+
+    /// <summary>Adds a label on the pie slice at its middle angle (on the UI thread).</summary>
+    private static void AddSliceLabelToCanvas(Canvas canvas, double cx, double cy, double rx, double ry, double startAngleDeg, double sweepDeg, string label)
+    {
+        double midAngleDeg = startAngleDeg + sweepDeg * 0.5;
+        double midRad = midAngleDeg * Math.PI / 180.0;
+        // Position at 55% of radius so text sits on the slice.
+        double labelDistX = 0.55 * rx;
+        double labelDistY = 0.55 * ry;
+        double x = cx + labelDistX * Math.Cos(midRad);
+        double y = cy + labelDistY * Math.Sin(midRad);
+
+        // Shorten label for on-chart display.
+        string displayText = label.Length > 22 ? label[..19] + "…" : label;
+
+        var tb = new TextBlock
+        {
+            Text = displayText,
+            FontSize = 11,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Colors.White),
+            TextAlignment = TextAlignment.Center,
+            MaxWidth = 90,
+            TextWrapping = TextWrapping.Wrap
+        };
+        // Center the text block on (x,y); use fixed offset since we don't have measured size yet.
+        Canvas.SetLeft(tb, x - 45);
+        Canvas.SetTop(tb, y - 10);
+        canvas.Children.Add(tb);
+    }
+
+    /// <summary>Creates tooltip content with an Acrylic (Mica-style) frosted background for use in popups.</summary>
+    private static FrameworkElement CreateMicaStyleToolTipContent(string text)
+    {
+        var brush = new AcrylicBrush
+        {
+            TintColor = Windows.UI.Color.FromArgb(255, 32, 32, 32),
+            TintOpacity = 0.9,
+            FallbackColor = Windows.UI.Color.FromArgb(230, 32, 32, 32)
+        };
+        return new Border
+        {
+            Background = brush,
+            Padding = new Thickness(10, 6, 10, 6),
+            CornerRadius = new CornerRadius(4),
+            BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(80, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            Child = new TextBlock
+            {
+                Text = text,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 320,
+                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)),
+                FontSize = 12
+            }
+        };
+    }
+
+    private static void AddPieSliceToCanvas(Canvas canvas, double cx, double cy, double rx, double ry, double startAngleDeg, double sweepDeg, Windows.UI.Color color, string? tooltip = null)
+    {
+        Microsoft.UI.Xaml.Shapes.Path pathShape;
+
+        // ArcSegment with 360° has same start/end point and doesn't render; draw a full ellipse instead.
+        if (sweepDeg >= 359.0)
+        {
+            pathShape = new Microsoft.UI.Xaml.Shapes.Path
+            {
+                Data = new EllipseGeometry
+                {
+                    Center = new Windows.Foundation.Point(cx, cy),
+                    RadiusX = rx,
+                    RadiusY = ry
+                },
+                Fill = new SolidColorBrush(color),
+                Stroke = new SolidColorBrush(Colors.Black),
+                StrokeThickness = 1
+            };
+        }
+        else
+        {
+            double startRad = startAngleDeg * Math.PI / 180.0;
+            double endRad = (startAngleDeg + sweepDeg) * Math.PI / 180.0;
+            double x1 = cx + rx * Math.Cos(startRad);
+            double y1 = cy + ry * Math.Sin(startRad);
+            double x2 = cx + rx * Math.Cos(endRad);
+            double y2 = cy + ry * Math.Sin(endRad);
+
+            var figure = new PathFigure
+            {
+                StartPoint = new Windows.Foundation.Point(cx, cy),
+                IsClosed = true
+            };
+            figure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(x1, y1) });
+            figure.Segments.Add(new ArcSegment
+            {
+                Point = new Windows.Foundation.Point(x2, y2),
+                Size = new Windows.Foundation.Size(rx, ry),
+                IsLargeArc = sweepDeg > 180,
+                SweepDirection = SweepDirection.Clockwise
+            });
+            var geometry = new PathGeometry();
+            geometry.Figures.Add(figure);
+            pathShape = new Microsoft.UI.Xaml.Shapes.Path
+            {
+                Data = geometry,
+                Fill = new SolidColorBrush(color),
+                Stroke = new SolidColorBrush(Colors.Black),
+                StrokeThickness = 1
+            };
+        }
+
+        if (!string.IsNullOrEmpty(tooltip))
+        {
+            ToolTipService.SetToolTip(pathShape, CreateMicaStyleToolTipContent(tooltip));
+        }
+
+        Canvas.SetLeft(pathShape, 0);
+        Canvas.SetTop(pathShape, 0);
+        canvas.Children.Add(pathShape);
     }
 
     private static string FormatBytes(ulong bytes)
     {
-        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
         int o = 0;
         double len = bytes;
         while (len >= 1024 && o < sizes.Length - 1) { o++; len /= 1024; }
@@ -144,14 +391,21 @@ public sealed partial class PartitionManagementWindow : Window
 
     private void ShowStatus(string text, bool isError = false)
     {
-        if (StatusText == null) return;
+        if (StatusText == null)
+        {
+            return;
+        }
+
         StatusText.Text = text;
         StatusText.Visibility = Visibility.Visible;
     }
 
     private void HideStatus()
     {
-        if (StatusText != null) StatusText.Visibility = Visibility.Collapsed;
+        if (StatusText != null)
+        {
+            StatusText.Visibility = Visibility.Collapsed;
+        }
     }
 
     private async void CreatePartitionButton_Click(object sender, RoutedEventArgs e)
@@ -175,21 +429,28 @@ public sealed partial class PartitionManagementWindow : Window
             CloseButtonText = "Cancel",
             XamlRoot = Content.XamlRoot
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
         uint sizeMB = 0;
         if (!string.IsNullOrWhiteSpace(sizeBox.Text) && !uint.TryParse(sizeBox.Text.Trim(), out sizeMB))
+        {
             sizeMB = 0;
+        }
+
         HideStatus();
         bool ok = DriveService.CreatePartition(entry.DiskIndex, sizeMB);
         if (ok)
         {
-            ShowStatus("Partition created. Refreshing.", false);
-            RefreshDisks();
-            if (DiskCombo.SelectedItem is DiskInfo d)
-                DiskCombo_SelectionChanged(DiskCombo, new SelectionChangedEventArgs(null, null));
+            ShowStatus("Partition created. Refreshing.");
+            _ = LoadDisksAsync();
         }
         else
+        {
             ShowStatus("Create failed. Try running as administrator.", true);
+        }
     }
 
     private async void DeletePartitionButton_Click(object sender, RoutedEventArgs e)
@@ -209,56 +470,76 @@ public sealed partial class PartitionManagementWindow : Window
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Content.XamlRoot
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
         HideStatus();
         bool ok = DriveService.DeletePartition(entry.DiskIndex, entry.Partition.PartitionIndex);
         if (ok)
         {
-            ShowStatus("Partition deleted. Refreshing.", false);
-            RefreshDisks();
-            if (DiskCombo.SelectedItem is DiskInfo d)
-                DiskCombo_SelectionChanged(DiskCombo, new SelectionChangedEventArgs(null, null));
+            ShowStatus("Partition deleted. Refreshing.");
+            _ = LoadDisksAsync();
         }
         else
+        {
             ShowStatus("Delete failed. Try running as administrator.", true);
+        }
     }
 
     private async void FormatButton_Click(object sender, RoutedEventArgs e)
     {
         var entry = PartitionList.SelectedItem as PartitionListEntry;
         if (entry?.Partition == null || string.IsNullOrEmpty(entry.Partition.DriveLetter) || entry.Partition.IsProtected)
+        {
             return;
+        }
+
         HideStatus();
         uint result = await DriveService.FormatAsync(entry.Partition.DriveLetter, "NTFS", true, 0, "", false);
         string msg = DriveService.GetFormatResultMessage(result);
         if (result == 0)
         {
-            ShowStatus("Format completed.", false);
-            RefreshDisks();
-            if (DiskCombo.SelectedItem is DiskInfo d)
-                DiskCombo_SelectionChanged(DiskCombo, new SelectionChangedEventArgs(null, null));
+            ShowStatus("Format completed.");
+            _ = LoadDisksAsync();
         }
         else
+        {
             ShowStatus(msg, true);
+        }
     }
 
     private async void AssignLetterButton_Click(object sender, RoutedEventArgs e)
     {
         var entry = PartitionList.SelectedItem as PartitionListEntry;
-        if (entry?.Partition == null || entry.Partition.IsProtected) return;
+        if (entry?.Partition == null || entry.Partition.IsProtected)
+        {
+            return;
+        }
+
         var part = entry.Partition;
         string currentLetter = part.DriveLetter.TrimEnd(':');
         var usedLetters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var disk in DriveService.GetDiskPartitionLayout())
+        foreach (var disk in _disks)
+        {
             foreach (var p in disk.Partitions)
+            {
                 if (!string.IsNullOrEmpty(p.DriveLetter))
+                {
                     usedLetters.Add(p.DriveLetter.TrimEnd(':'));
+                }
+            }
+        }
+
         var available = new List<string>();
         for (char c = 'A'; c <= 'Z'; c++)
         {
             string letter = c.ToString();
             if (!usedLetters.Contains(letter))
+            {
                 available.Add(letter + ":");
+            }
         }
         if (available.Count == 0)
         {
@@ -277,31 +558,43 @@ public sealed partial class PartitionManagementWindow : Window
             CloseButtonText = "Cancel",
             XamlRoot = Content.XamlRoot
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
         string newLetter = (combo.SelectedItem as string) ?? available[0];
         newLetter = newLetter.TrimEnd(':');
         bool ok;
         if (string.IsNullOrEmpty(part.DriveLetter))
+        {
             ok = DriveService.AssignLetterToPartition(entry.DiskIndex, part.PartitionIndex, newLetter);
+        }
         else
+        {
             ok = DriveService.TryAssignDriveLetter(currentLetter, newLetter);
+        }
+
         HideStatus();
         if (ok)
         {
-            ShowStatus($"Drive letter set to {newLetter}:. Refreshing.", false);
-            RefreshDisks();
-            if (DiskCombo.SelectedItem is DiskInfo d)
-                DiskCombo_SelectionChanged(DiskCombo, new SelectionChangedEventArgs(null, null));
+            ShowStatus($"Drive letter set to {newLetter}:. Refreshing.");
+            _ = LoadDisksAsync();
         }
         else
+        {
             ShowStatus("Failed. Try running as administrator.", true);
+        }
     }
 
     private async void ExtendButton_Click(object sender, RoutedEventArgs e)
     {
         var entry = PartitionList.SelectedItem as PartitionListEntry;
         if (entry?.Partition == null || string.IsNullOrEmpty(entry.Partition.DriveLetter) || entry.Partition.IsProtected)
+        {
             return;
+        }
+
         int? volNum = DriveService.GetVolumeNumberForDriveLetter(entry.Partition.DriveLetter);
         if (volNum == null) { ShowStatus("Could not get volume. Run the app as administrator for Extend/Shrink.", true); return; }
         var sizeBox = new TextBox { PlaceholderText = "0 = use all", Width = 200 };
@@ -318,30 +611,44 @@ public sealed partial class PartitionManagementWindow : Window
             CloseButtonText = "Cancel",
             XamlRoot = Content.XamlRoot
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
         uint? sizeMB = null;
         if (!string.IsNullOrWhiteSpace(sizeBox.Text) && uint.TryParse(sizeBox.Text.Trim(), out uint s))
+        {
             sizeMB = s;
+        }
+
         HideStatus();
         bool ok = DriveService.ExtendVolume(volNum.Value, sizeMB);
         if (ok)
         {
-            ShowStatus("Volume extended. Refreshing.", false);
-            RefreshDisks();
-            if (DiskCombo.SelectedItem is DiskInfo d)
-                DiskCombo_SelectionChanged(DiskCombo, new SelectionChangedEventArgs(null, null));
+            ShowStatus("Volume extended. Refreshing.");
+            _ = LoadDisksAsync();
         }
         else
+        {
             ShowStatus("Extend failed. Try running as administrator.", true);
+        }
     }
 
     private async void ShrinkButton_Click(object sender, RoutedEventArgs e)
     {
         var entry = PartitionList.SelectedItem as PartitionListEntry;
         if (entry?.Partition == null || string.IsNullOrEmpty(entry.Partition.DriveLetter) || entry.Partition.IsProtected)
+        {
             return;
+        }
+
         int? volNum = DriveService.GetVolumeNumberForDriveLetter(entry.Partition.DriveLetter);
-        if (volNum == null) { ShowStatus("Could not get volume. Run the app as administrator for Extend/Shrink.", true); return; }
+        if (volNum == null)
+        {
+            ShowStatus("Could not get volume. Run the app as administrator for Extend/Shrink.", true); 
+            return;
+        }
         var sizeBox = new TextBox { PlaceholderText = "MB to shrink by", Width = 200 };
         sizeBox.InputScope = new InputScope();
         sizeBox.InputScope.Names.Add(new InputScopeName(InputScopeNameValue.Number));
@@ -356,7 +663,11 @@ public sealed partial class PartitionManagementWindow : Window
             CloseButtonText = "Cancel",
             XamlRoot = Content.XamlRoot
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
         if (!uint.TryParse(sizeBox.Text?.Trim(), out uint desiredMB) || desiredMB == 0)
         {
             ShowStatus("Enter a valid size in MB.", true);
@@ -366,20 +677,22 @@ public sealed partial class PartitionManagementWindow : Window
         bool ok = DriveService.ShrinkVolume(volNum.Value, desiredMB);
         if (ok)
         {
-            ShowStatus("Volume shrunk. Refreshing.", false);
-            RefreshDisks();
-            if (DiskCombo.SelectedItem is DiskInfo d)
-                DiskCombo_SelectionChanged(DiskCombo, new SelectionChangedEventArgs(null, null));
+            ShowStatus("Volume shrunk. Refreshing.");
+            _ = LoadDisksAsync();
         }
         else
+        {
             ShowStatus("Shrink failed. Try running as administrator.", true);
+        }
     }
 
-    private void RefreshButton_Click(object sender, RoutedEventArgs e)
+    private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         HideStatus();
-        RefreshDisks();
+        await LoadDisksAsync();
         if (DiskCombo.SelectedItem is DiskInfo d)
+        {
             DiskCombo_SelectionChanged(DiskCombo, new SelectionChangedEventArgs(null, null));
+        }
     }
 }

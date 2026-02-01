@@ -4,9 +4,15 @@ namespace DiskSeer.Services;
 /// Service for detecting and accessing Apple (HFS+) and Linux (ext2/3/4, Btrfs, XFS) file systems.
 /// Uses DiscUtils library for file system parsing and raw disk access via Win32 API.
 /// Requires administrator privileges for raw disk access.
+/// Uses multicore parallelism for drive enumeration and supports concurrent file operations.
 /// </summary>
 public sealed class ForeignDriveService : IDisposable
 {
+    /// <summary>Default degree of parallelism for drive detection (one physical disk per core, capped).</summary>
+    private static int DriveDetectionParallelism => Math.Min(Environment.ProcessorCount, 8);
+
+    /// <summary>Default degree of parallelism for batch file copy (avoid overwhelming a single disk).</summary>
+    public const int DefaultCopyParallelism = 2;
     private Disk? _currentDisk;
     private IFileSystem? _currentFileSystem;
     private Stream? _currentPartitionStream;
@@ -77,45 +83,112 @@ public sealed class ForeignDriveService : IDisposable
     /// </summary>
     public static IReadOnlyList<ForeignDriveInfo> GetAllPhysicalDrives()
     {
-        var drives = new List<ForeignDriveInfo>();
+        return GetAllPhysicalDrivesInternal(parallel: false);
+    }
+
+    /// <summary>
+    /// Gets all physical drives using multiple cores to detect partitions in parallel.
+    /// Each physical disk is scanned on a thread-pool thread for faster enumeration.
+    /// </summary>
+    /// <param name="cancellationToken">Optional cancellation.</param>
+    /// <returns>List of drives with partitions, ordered by drive index.</returns>
+    public static async Task<IReadOnlyList<ForeignDriveInfo>> GetAllPhysicalDrivesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await Task.Run(() => GetAllPhysicalDrivesInternal(parallel: true, cancellationToken), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Internal implementation: optionally runs partition detection in parallel across drives.
+    /// </summary>
+    private static IReadOnlyList<ForeignDriveInfo> GetAllPhysicalDrivesInternal(bool parallel, CancellationToken cancellationToken = default)
+    {
+        List<(int Index, ulong Size, string Model)>? driveMeta;
 
         try
         {
             using var searcher = new ManagementObjectSearcher(
                 "SELECT DeviceID, Index, Size, Model FROM Win32_DiskDrive");
 
+            driveMeta = [];
             foreach (ManagementBaseObject diskObj in searcher.Get())
             {
                 using var disk = (ManagementObject)diskObj;
                 int diskIndex = Convert.ToInt32(disk["Index"]);
                 ulong diskSize = disk["Size"] != null ? Convert.ToUInt64(disk["Size"]) : 0;
                 string model = disk["Model"]?.ToString()?.Trim() ?? $"Disk {diskIndex}";
+                driveMeta.Add((diskIndex, diskSize, model));
+            }
+        }
+        catch
+        {
+            return new List<ForeignDriveInfo>();
+        }
 
+        if (driveMeta == null || driveMeta.Count == 0)
+        {
+            return new List<ForeignDriveInfo>();
+        }
+
+        if (!parallel)
+        {
+            var drives = new List<ForeignDriveInfo>();
+            foreach (var (diskIndex, diskSize, model) in driveMeta)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 var driveInfo = new ForeignDriveInfo
                 {
                     DriveIndex = diskIndex,
                     Model = model,
                     Size = diskSize
                 };
+                try { DetectForeignPartitions(driveInfo); } catch { /* continue */ }
+                drives.Add(driveInfo);
+            }
+            return drives;
+        }
 
+        // Parallel: one drive per slot, preserve order by index
+        var results = new ForeignDriveInfo?[driveMeta.Count];
+        var options = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = DriveDetectionParallelism,
+            CancellationToken = cancellationToken
+        };
+
+        try
+        {
+            Parallel.For(0, driveMeta.Count, options, i =>
+            {
+                var (diskIndex, diskSize, model) = driveMeta[i];
+                var driveInfo = new ForeignDriveInfo
+                {
+                    DriveIndex = diskIndex,
+                    Model = model,
+                    Size = diskSize
+                };
                 try
                 {
                     DetectForeignPartitions(driveInfo);
                 }
                 catch
                 {
-                    // Continue with empty partition list
+                    // Leave partition list empty
                 }
-
-                drives.Add(driveInfo);
-            }
+                results[i] = driveInfo;
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Return partial results
         }
         catch
         {
-            // Return empty list on errors
+            // Return whatever we have
         }
 
-        return drives;
+        return results.Where(d => d != null).Cast<ForeignDriveInfo>().OrderBy(d => d.DriveIndex).ToList();
     }
 
     /// <summary>
@@ -187,7 +260,9 @@ public sealed class ForeignDriveService : IDisposable
     private static ForeignFileSystemType DetectFileSystemType(Stream stream)
     {
         if (!stream.CanSeek || !stream.CanRead)
+        {
             return ForeignFileSystemType.Unknown;
+        }
 
         try
         {
@@ -201,13 +276,19 @@ public sealed class ForeignDriveService : IDisposable
                     // Check for ext4 features
                     stream.Position = 1024 + 96; // s_feature_incompat
                     byte[] features = new byte[4];
-                    stream.Read(features, 0, 4);
+                    stream.ReadExactly(features, 0, 4);
                     uint incompat = BitConverter.ToUInt32(features, 0);
                     
                     if ((incompat & 0x40) != 0) // INCOMPAT_EXTENTS
+                    {
                         return ForeignFileSystemType.Ext4;
+                    }
+
                     if ((incompat & 0x04) != 0) // INCOMPAT_JOURNAL_DEV or has journal
+                    {
                         return ForeignFileSystemType.Ext3;
+                    }
+
                     return ForeignFileSystemType.Ext2;
                 }
             }
@@ -220,9 +301,14 @@ public sealed class ForeignDriveService : IDisposable
                 if (stream.Read(sig, 0, 2) == 2)
                 {
                     if (sig[0] == 'H' && sig[1] == '+')
+                    {
                         return ForeignFileSystemType.HFSPlus;
+                    }
+
                     if (sig[0] == 'H' && sig[1] == 'X')
+                    {
                         return ForeignFileSystemType.HFSPlus; // HFSX
+                    }
                 }
             }
 
@@ -235,7 +321,9 @@ public sealed class ForeignDriveService : IDisposable
                 {
                     if (apfsMagic[0] == 'N' && apfsMagic[1] == 'X' && 
                         apfsMagic[2] == 'S' && apfsMagic[3] == 'B')
+                    {
                         return ForeignFileSystemType.APFS;
+                    }
                 }
             }
 
@@ -250,7 +338,9 @@ public sealed class ForeignDriveService : IDisposable
                         btrfsMagic[2] == 'H' && btrfsMagic[3] == 'R' &&
                         btrfsMagic[4] == 'f' && btrfsMagic[5] == 'S' &&
                         btrfsMagic[6] == '_' && btrfsMagic[7] == 'M')
+                    {
                         return ForeignFileSystemType.Btrfs;
+                    }
                 }
             }
 
@@ -263,7 +353,9 @@ public sealed class ForeignDriveService : IDisposable
                 {
                     if (xfsMagic[0] == 'X' && xfsMagic[1] == 'F' &&
                         xfsMagic[2] == 'S' && xfsMagic[3] == 'B')
+                    {
                         return ForeignFileSystemType.XFS;
+                    }
                 }
             }
         }
@@ -428,14 +520,18 @@ public sealed class ForeignDriveService : IDisposable
         var entries = new List<FileSystemEntry>();
 
         if (_currentFileSystem == null)
+        {
             return entries;
+        }
 
         try
         {
             // Normalize path
             path = path.Replace('\\', '/');
             if (!path.StartsWith('/'))
+            {
                 path = "/" + path;
+            }
 
             // Get directories
             foreach (var dir in _currentFileSystem.GetDirectories(path))
@@ -489,7 +585,10 @@ public sealed class ForeignDriveService : IDisposable
             entries.Sort((a, b) =>
             {
                 if (a.IsDirectory != b.IsDirectory)
+                {
                     return b.IsDirectory.CompareTo(a.IsDirectory);
+                }
+
                 return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
             });
         }
@@ -507,7 +606,9 @@ public sealed class ForeignDriveService : IDisposable
     public string GetVolumeLabel()
     {
         if (_currentFileSystem == null)
+        {
             return string.Empty;
+        }
 
         try
         {
@@ -539,7 +640,9 @@ public sealed class ForeignDriveService : IDisposable
     public bool IsDirectory(string path)
     {
         if (_currentFileSystem == null)
+        {
             return false;
+        }
 
         try
         {
@@ -558,7 +661,9 @@ public sealed class ForeignDriveService : IDisposable
     public bool Exists(string path)
     {
         if (_currentFileSystem == null)
+        {
             return false;
+        }
 
         try
         {
@@ -577,7 +682,9 @@ public sealed class ForeignDriveService : IDisposable
     public byte[] ReadFile(string path)
     {
         if (_currentFileSystem == null)
+        {
             throw new InvalidOperationException("No partition is open.");
+        }
 
         path = NormalizePath(path);
         using var stream = _currentFileSystem.OpenFile(path, FileMode.Open, FileAccess.Read);
@@ -592,7 +699,9 @@ public sealed class ForeignDriveService : IDisposable
     public Stream OpenFileForRead(string path)
     {
         if (_currentFileSystem == null)
+        {
             throw new InvalidOperationException("No partition is open.");
+        }
 
         path = NormalizePath(path);
         return _currentFileSystem.OpenFile(path, FileMode.Open, FileAccess.Read);
@@ -612,7 +721,9 @@ public sealed class ForeignDriveService : IDisposable
         CancellationToken cancellationToken = default)
     {
         if (_currentFileSystem == null)
+        {
             throw new InvalidOperationException("No partition is open.");
+        }
 
         sourcePath = NormalizePath(sourcePath);
         var fileInfo = _currentFileSystem.GetFileInfo(sourcePath);
@@ -638,6 +749,59 @@ public sealed class ForeignDriveService : IDisposable
     }
 
     /// <summary>
+    /// Copies multiple files from the foreign file system to local paths with limited parallelism.
+    /// Uses multiple threads (up to <paramref name="maxConcurrency"/>) to copy files concurrently.
+    /// </summary>
+    /// <param name="sourceDestPairs">Pairs of (source path on foreign FS, local destination path).</param>
+    /// <param name="maxConcurrency">Max concurrent copy operations (default 2 to avoid overwhelming a single disk).</param>
+    /// <param name="progress">Optional progress (completed count, total count).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task CopyFilesToLocalAsync(
+        IEnumerable<(string SourcePath, string DestPath)> sourceDestPairs,
+        int maxConcurrency = DefaultCopyParallelism,
+        IProgress<(int Completed, int Total)>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var pairs = sourceDestPairs.ToList();
+        if (pairs.Count == 0)
+        {
+            return;
+        }
+
+        int total = pairs.Count;
+        int completed = 0;
+        var completedLock = new object();
+        using var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+
+        var tasks = pairs.Select(async pair =>
+        {
+            if (semaphore != null)
+            {
+                await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await CopyFileToLocalAsync(pair.SourcePath, pair.DestPath, null, cancellationToken)
+                        .ConfigureAwait(false);
+                    int current;
+                    lock (completedLock)
+                    {
+                        completed++;
+                        current = completed;
+                    }
+
+                    progress?.Report((current, total));
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }
+        });
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Copies a local file to the foreign file system.
     /// Note: Write support depends on the file system and DiscUtils implementation.
     /// </summary>
@@ -648,7 +812,9 @@ public sealed class ForeignDriveService : IDisposable
         CancellationToken cancellationToken = default)
     {
         if (_currentFileSystem == null)
+        {
             throw new InvalidOperationException("No partition is open.");
+        }
 
         destinationPath = NormalizePath(destinationPath);
         var localInfo = new FileInfo(sourcePath);
@@ -674,12 +840,62 @@ public sealed class ForeignDriveService : IDisposable
     }
 
     /// <summary>
+    /// Copies multiple local files to the foreign file system with limited parallelism.
+    /// </summary>
+    /// <param name="sourceDestPairs">Pairs of (local source path, destination path on foreign FS).</param>
+    /// <param name="maxConcurrency">Max concurrent copy operations (default 2).</param>
+    /// <param name="progress">Optional progress (completed count, total count).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task CopyFilesFromLocalAsync(
+        IEnumerable<(string SourcePath, string DestPath)> sourceDestPairs,
+        int maxConcurrency = DefaultCopyParallelism,
+        IProgress<(int Completed, int Total)>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var pairs = sourceDestPairs.ToList();
+        if (pairs.Count == 0)
+        {
+            return;
+        }
+
+        int total = pairs.Count;
+        int completed = 0;
+        var completedLock = new object();
+        using var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+
+        var tasks = pairs.Select(async pair =>
+        {
+            await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await CopyFileFromLocalAsync(pair.SourcePath, pair.DestPath, null, cancellationToken)
+                    .ConfigureAwait(false);
+                int current;
+                lock (completedLock)
+                {
+                    completed++;
+                    current = completed;
+                }
+                progress?.Report((current, total));
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Creates a directory in the foreign file system.
     /// </summary>
     public void CreateDirectory(string path)
     {
         if (_currentFileSystem == null)
+        {
             throw new InvalidOperationException("No partition is open.");
+        }
 
         path = NormalizePath(path);
         _currentFileSystem.CreateDirectory(path);
@@ -691,7 +907,9 @@ public sealed class ForeignDriveService : IDisposable
     public void DeleteFile(string path)
     {
         if (_currentFileSystem == null)
+        {
             throw new InvalidOperationException("No partition is open.");
+        }
 
         path = NormalizePath(path);
         _currentFileSystem.DeleteFile(path);
@@ -703,7 +921,9 @@ public sealed class ForeignDriveService : IDisposable
     public void DeleteDirectory(string path, bool recursive = true)
     {
         if (_currentFileSystem == null)
+        {
             throw new InvalidOperationException("No partition is open.");
+        }
 
         path = NormalizePath(path);
         
@@ -716,7 +936,7 @@ public sealed class ForeignDriveService : IDisposable
             }
             foreach (var dir in _currentFileSystem.GetDirectories(path))
             {
-                DeleteDirectory(dir, true);
+                DeleteDirectory(dir);
             }
         }
 
@@ -729,7 +949,9 @@ public sealed class ForeignDriveService : IDisposable
     public void Move(string sourcePath, string destinationPath)
     {
         if (_currentFileSystem == null)
+        {
             throw new InvalidOperationException("No partition is open.");
+        }
 
         sourcePath = NormalizePath(sourcePath);
         destinationPath = NormalizePath(destinationPath);
@@ -743,7 +965,11 @@ public sealed class ForeignDriveService : IDisposable
     {
         if (_currentFileSystem is IDisposable disposableFs)
         {
-            try { disposableFs.Dispose(); } catch { }
+            try { disposableFs.Dispose(); }
+            catch
+            {
+                // ignored
+            }
         }
         _currentFileSystem = null;
 
@@ -764,7 +990,10 @@ public sealed class ForeignDriveService : IDisposable
     {
         path = path.Replace('\\', '/');
         if (!path.StartsWith('/'))
+        {
             path = "/" + path;
+        }
+
         return path;
     }
 

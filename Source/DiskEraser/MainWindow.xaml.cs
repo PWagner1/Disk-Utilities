@@ -1,15 +1,3 @@
-using System.Diagnostics;
-using Microsoft.UI;
-using Microsoft.UI.Composition.SystemBackdrops;
-using Microsoft.UI.Windowing;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Media;
-using WinRT.Interop;
-using DiskEraser.Models;
-using DiskEraser.Services;
-
 namespace DiskEraser;
 
 /// <summary>
@@ -18,7 +6,10 @@ namespace DiskEraser;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    private IReadOnlyList<DriveItem> _drives = Array.Empty<DriveItem>();
+    private IReadOnlyList<DriveItem> _drives = [];
+    private IReadOnlyList<DiskInfo> _lastDisks = [];
+    private string? _cachedFormattableHex, _cachedSystemHex, _cachedNoLetterHex;
+    private SolidColorBrush? _cachedFormattableBrush, _cachedSystemBrush, _cachedNoLetterBrush, _cachedWhiteBrush;
 
     public MainWindow()
     {
@@ -29,9 +20,8 @@ public sealed partial class MainWindow : Window
         LoadFileSystems();
         LoadClusterSizePresets();
         LoadSecureWipePresets();
-        RefreshDrives();
-        BuildDiagram();
         SetDriveLayoutContextMenu();
+        _ = LoadDrivesAndDiagramAsync();
         SecureDeletionCheck.Checked += (_, _) => UpdateSecureWipePresetState();
         SecureDeletionCheck.Unchecked += (_, _) => UpdateSecureWipePresetState();
         UpdateSecureWipePresetState();
@@ -88,7 +78,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Presets for allocation unit (cluster) size when formatting.</summary>
     private static readonly (string DisplayName, uint Bytes)[] ClusterSizePresets =
-    {
+    [
         ("Default (system)", 0),
         ("512 bytes", 512),
         ("1 KB", 1024),
@@ -96,15 +86,18 @@ public sealed partial class MainWindow : Window
         ("8 KB", 8192),
         ("16 KB", 16384),
         ("32 KB", 32768),
-        ("64 KB", 65536),
-    };
+        ("64 KB", 65536)
+    ];
 
     /// <summary>Populates the allocation unit size preset combo.</summary>
     private void LoadClusterSizePresets()
     {
         ClusterSizePresetCombo.Items.Clear();
         foreach (var (displayName, _) in ClusterSizePresets)
+        {
             ClusterSizePresetCombo.Items.Add(displayName);
+        }
+
         ClusterSizePresetCombo.SelectedIndex = 0;
     }
 
@@ -112,7 +105,10 @@ public sealed partial class MainWindow : Window
     {
         var combo = ClusterSizePresetCombo;
         if (combo == null || combo.SelectedIndex < 0 || combo.SelectedIndex >= ClusterSizePresets.Length)
+        {
             return;
+        }
+
         uint bytes = ClusterSizePresets[combo.SelectedIndex].Bytes;
         if (ClusterSizeBox != null)
         {
@@ -125,7 +121,10 @@ public sealed partial class MainWindow : Window
     {
         SecureWipePresetCombo.Items.Clear();
         foreach (var (displayName, _) in DriveService.SecureWipePresets)
+        {
             SecureWipePresetCombo.Items.Add(displayName);
+        }
+
         SecureWipePresetCombo.SelectedIndex = 0;
     }
 
@@ -142,8 +141,59 @@ public sealed partial class MainWindow : Window
     {
         FileSystemCombo.Items.Clear();
         foreach (string fs in DriveService.SupportedFileSystems)
+        {
             FileSystemCombo.Items.Add(fs);
+        }
+
         FileSystemCombo.SelectedIndex = 0;
+    }
+
+    /// <summary>Loads drives and disk layout on thread-pool threads, then updates UI on the dispatcher.</summary>
+    private async Task LoadDrivesAndDiagramAsync()
+    {
+        IReadOnlyList<DriveItem> drives;
+        IReadOnlyList<DiskInfo> disks;
+        try
+        {
+            var drivesTask = DriveService.GetFormattableDrivesAsync();
+            var disksTask = DriveService.GetDiskPartitionLayoutAsync();
+            await Task.WhenAll(drivesTask, disksTask).ConfigureAwait(false);
+            drives = await drivesTask.ConfigureAwait(false);
+            disks = await disksTask.ConfigureAwait(false);
+        }
+        catch
+        {
+            drives = [];
+            disks = [];
+        }
+
+        var queue = DispatcherQueue;
+        if (queue == null)
+        {
+            return;
+        }
+
+        queue.TryEnqueue(() =>
+        {
+            _drives = drives;
+            _lastDisks = disks;
+            DriveCombo.Items.Clear();
+            foreach (DriveItem d in _drives)
+            {
+                DriveCombo.Items.Add(d);
+            }
+
+            if (_drives.Count > 0)
+            {
+                DriveCombo.SelectedIndex = 0;
+            }
+            else
+            {
+                DriveCombo.PlaceholderText = "No other drives found (C: is protected).";
+            }
+
+            BuildDiagram(disks);
+        });
     }
 
     /// <summary>Refreshes the list of formattable drives (excluding C:) and updates the drive combo.</summary>
@@ -152,21 +202,35 @@ public sealed partial class MainWindow : Window
         _drives = DriveService.GetFormattableDrives();
         DriveCombo.Items.Clear();
         foreach (DriveItem d in _drives)
+        {
             DriveCombo.Items.Add(d);
+        }
+
         if (_drives.Count > 0)
+        {
             DriveCombo.SelectedIndex = 0;
+        }
         else
+        {
             DriveCombo.PlaceholderText = "No other drives found (C: is protected).";
+        }
     }
 
     private void DriveCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (DriveLetterBox == null)
+        {
             return;
+        }
+
         if (DriveCombo.SelectedItem is DriveItem selected)
+        {
             DriveLetterBox.Text = selected.DriveLetter.TrimEnd(':');
+        }
         else
+        {
             DriveLetterBox.Text = string.Empty;
+        }
     }
 
     private void DriveLetterBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -197,26 +261,42 @@ public sealed partial class MainWindow : Window
     private void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         HideStatus();
-        RefreshDrives();
-        BuildDiagram();
+        _ = LoadDrivesAndDiagramAsync();
     }
 
-    /// <summary>Builds the interactive disk/partition diagram and wires partition click to drive selection.</summary>
-    private void BuildDiagram()
+    /// <summary>Builds the interactive disk/partition diagram. If <paramref name="disks"/> is null, fetches layout on the current thread.</summary>
+    private void BuildDiagram(IReadOnlyList<DiskInfo>? disks = null)
     {
-        if (DiagramPanel == null) return;
+        if (DiagramPanel == null)
+        {
+            return;
+        }
+
         DiagramPanel.Children.Clear();
 
-        IReadOnlyList<DiskInfo> disks = DriveService.GetDiskPartitionLayout();
+        disks ??= DriveService.GetDiskPartitionLayout();
         const double barHeight = 28;
 
-        Windows.UI.Color formattableColour = AppSettings.ParseColor(AppSettings.GetFormattableColour()) ?? Colors.SteelBlue;
-        Windows.UI.Color systemColour = AppSettings.ParseColor(AppSettings.GetSystemDriveColour()) ?? Colors.OrangeRed;
-        Windows.UI.Color noLetterColour = AppSettings.ParseColor(AppSettings.GetNoLetterColour()) ?? Colors.Gray;
-        var formattableBrush = new SolidColorBrush(formattableColour);
-        var systemBrush = new SolidColorBrush(systemColour);
-        var noLetterBrush = new SolidColorBrush(noLetterColour);
-        var whiteBrush = new SolidColorBrush(Colors.White);
+        string formattableHex = AppSettings.GetFormattableColour();
+        string systemHex = AppSettings.GetSystemDriveColour();
+        string noLetterHex = AppSettings.GetNoLetterColour();
+        if (_cachedFormattableHex != formattableHex || _cachedSystemHex != systemHex || _cachedNoLetterHex != noLetterHex)
+        {
+            _cachedFormattableHex = formattableHex;
+            _cachedSystemHex = systemHex;
+            _cachedNoLetterHex = noLetterHex;
+            Windows.UI.Color fc = AppSettings.ParseColor(formattableHex) ?? Colors.SteelBlue;
+            Windows.UI.Color sc = AppSettings.ParseColor(systemHex) ?? Colors.OrangeRed;
+            Windows.UI.Color nc = AppSettings.ParseColor(noLetterHex) ?? Colors.Gray;
+            _cachedFormattableBrush = new SolidColorBrush(fc);
+            _cachedSystemBrush = new SolidColorBrush(sc);
+            _cachedNoLetterBrush = new SolidColorBrush(nc);
+            _cachedWhiteBrush = new SolidColorBrush(Colors.White);
+        }
+        var formattableBrush = _cachedFormattableBrush!;
+        var systemBrush = _cachedSystemBrush!;
+        var noLetterBrush = _cachedNoLetterBrush!;
+        var whiteBrush = _cachedWhiteBrush!;
 
         foreach (DiskInfo disk in disks)
         {
@@ -312,25 +392,34 @@ public sealed partial class MainWindow : Window
         openItem.Click += (_, _) =>
         {
             var partitionWindow = new PartitionManagementWindow();
-            partitionWindow.Closed += (_, _) =>
-            {
-                RefreshDrives();
-                BuildDiagram();
-            };
+            partitionWindow.Closed += (_, _) => _ = LoadDrivesAndDiagramAsync();
             partitionWindow.Activate();
         };
         diagramMenu.Items.Add(openItem);
         var section = (Content as FrameworkElement)?.FindName("DriveLayoutSection") as StackPanel;
         if (section != null)
+        {
             section.ContextFlyout = diagramMenu;
+        }
     }
 
     private void ContextMenu_Format_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuFlyoutItem item || item.Tag is not PartitionInfo part)
+        {
             return;
-        if (part.IsProtected || string.IsNullOrEmpty(part.DriveLetter)) return;
-        if (DriveLetterBox != null) DriveLetterBox.Text = part.DriveLetter.TrimEnd(':');
+        }
+
+        if (part.IsProtected || string.IsNullOrEmpty(part.DriveLetter))
+        {
+            return;
+        }
+
+        if (DriveLetterBox != null)
+        {
+            DriveLetterBox.Text = part.DriveLetter.TrimEnd(':');
+        }
+
         if (DriveCombo != null)
         {
             for (int i = 0; i < DriveCombo.Items.Count; i++)
@@ -348,16 +437,25 @@ public sealed partial class MainWindow : Window
     private async void ContextMenu_ChangeDriveLetter_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuFlyoutItem item || item.Tag is not PartitionInfo part)
+        {
             return;
-        if (string.IsNullOrEmpty(part.DriveLetter) || part.IsProtected) return;
+        }
+
+        if (string.IsNullOrEmpty(part.DriveLetter) || part.IsProtected)
+        {
+            return;
+        }
+
         string currentLetter = part.DriveLetter.TrimEnd(':');
         var usedLetters = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var disk in DriveService.GetDiskPartitionLayout())
+        foreach (var disk in _lastDisks)
         {
             foreach (var p in disk.Partitions)
             {
                 if (!string.IsNullOrEmpty(p.DriveLetter))
+                {
                     usedLetters.Add(p.DriveLetter.TrimEnd(':'));
+                }
             }
         }
         var available = new List<string>();
@@ -365,7 +463,9 @@ public sealed partial class MainWindow : Window
         {
             string letter = c.ToString();
             if (!usedLetters.Contains(letter))
+            {
                 available.Add(letter + ":");
+            }
         }
         if (available.Count == 0)
         {
@@ -390,15 +490,18 @@ public sealed partial class MainWindow : Window
             CloseButtonText = "Cancel",
             XamlRoot = Content.XamlRoot
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
         string newLetter = (combo.SelectedItem as string) ?? available[0];
         newLetter = newLetter.TrimEnd(':');
         bool ok = DriveService.TryAssignDriveLetter(currentLetter, newLetter);
         if (ok)
         {
             ShowStatus($"Drive letter changed to {newLetter}:. Refreshing.", isError: false);
-            RefreshDrives();
-            BuildDiagram();
+            _ = LoadDrivesAndDiagramAsync();
         }
         else
         {
@@ -409,11 +512,7 @@ public sealed partial class MainWindow : Window
     private void ContextMenu_OpenPartitionManager_Click(object sender, RoutedEventArgs e)
     {
         var partitionWindow = new PartitionManagementWindow();
-        partitionWindow.Closed += (_, _) =>
-        {
-            RefreshDrives();
-            BuildDiagram();
-        };
+        partitionWindow.Closed += (_, _) => _ = LoadDrivesAndDiagramAsync();
         partitionWindow.Activate();
     }
 
@@ -424,27 +523,29 @@ public sealed partial class MainWindow : Window
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        var settingsWindow = new SettingsWindow(onSaved: () => BuildDiagram());
+        var settingsWindow = new SettingsWindow(onSaved: () => _ = LoadDrivesAndDiagramAsync());
         settingsWindow.Activate();
     }
 
     private void ManagePartitionsButton_Click(object sender, RoutedEventArgs e)
     {
         var partitionWindow = new PartitionManagementWindow();
-        partitionWindow.Closed += (_, _) =>
-        {
-            RefreshDrives();
-            BuildDiagram();
-        };
+        partitionWindow.Closed += (_, _) => _ = LoadDrivesAndDiagramAsync();
         partitionWindow.Activate();
     }
 
     private void PartitionBlock_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button btn || btn.Tag is not PartitionInfo part)
+        {
             return;
+        }
+
         if (DriveLetterBox != null)
+        {
             DriveLetterBox.Text = string.IsNullOrEmpty(part.DriveLetter) ? string.Empty : part.DriveLetter.TrimEnd(':');
+        }
+
         if (!string.IsNullOrEmpty(part.DriveLetter) && DriveCombo != null)
         {
             for (int i = 0; i < DriveCombo.Items.Count; i++)
@@ -462,10 +563,16 @@ public sealed partial class MainWindow : Window
     private static string NormalizeDriveLetter(string? input)
     {
         if (string.IsNullOrWhiteSpace(input))
+        {
             return string.Empty;
+        }
+
         char c = input.Trim().ToUpperInvariant()[0];
         if (c >= 'A' && c <= 'Z')
+        {
             return c + ":";
+        }
+
         return string.Empty;
     }
 
@@ -475,7 +582,9 @@ public sealed partial class MainWindow : Window
         if (string.IsNullOrEmpty(driveLetter))
         {
             if (DriveCombo.SelectedItem is DriveItem selected)
+            {
                 driveLetter = selected.DriveLetter.TrimEnd(':').ToUpperInvariant() + ":";
+            }
             else
             {
                 ShowStatus("Please select a drive or enter a drive letter (e.g. D).", isError: true);
@@ -508,7 +617,9 @@ public sealed partial class MainWindow : Window
 
         bool confirmed = await ShowFormatConfirmDialogAsync(driveLetter, fileSystem, secureDeletion, wipePasses);
         if (!confirmed)
+        {
             return;
+        }
 
         SetBusy(true);
         HideStatus();
@@ -550,7 +661,7 @@ public sealed partial class MainWindow : Window
             if (result == 0)
             {
                 ShowStatus(secureDeletion ? "Secure wipe and format completed." : message, isError: false);
-                RefreshDrives();
+                _ = LoadDrivesAndDiagramAsync();
             }
             else
             {

@@ -1,11 +1,3 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Windowing;
-using Microsoft.UI.Composition.SystemBackdrops;
-using WinRT.Interop;
-using DiskEraser.Services;
-
 namespace DiskEraser;
 
 /// <summary>
@@ -23,10 +15,32 @@ public sealed partial class SettingsWindow : Window
         InitializeComponent();
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
-        TrySetWindowSize(400, 463);
+        TrySetWindowSize(400, 520);
+        LoadThemeOptions();
+        LoadCurrentTheme();
         LoadColourPresets();
         LoadCurrentColours();
         UpdateColourPreviews();
+        App.ApplyTheme(this);
+    }
+
+    private void LoadThemeOptions()
+    {
+        ThemeCombo.Items.Clear();
+        ThemeCombo.Items.Add("Light");
+        ThemeCombo.Items.Add("Dark");
+        ThemeCombo.Items.Add("Use system default");
+    }
+
+    private void LoadCurrentTheme()
+    {
+        string theme = AppSettings.GetTheme();
+        ThemeCombo.SelectedIndex = theme switch
+        {
+            AppSettings.ThemeLight => 0,
+            AppSettings.ThemeDark => 1,
+            _ => 2
+        };
     }
 
     private void LoadColourPresets()
@@ -110,24 +124,55 @@ public sealed partial class SettingsWindow : Window
         SetPreviewFromCombo(root?.FindName("NoLetterColourPreview") as Border, NoLetterColourCombo);
     }
 
-    private static void SetPreviewFromCombo(Border preview, ComboBox combo)
+    private static void SetPreviewFromCombo(Border? preview, ComboBox? combo)
     {
-        if (preview == null || combo == null) return;
+        if (preview == null || combo == null)
+        {
+            return;
+        }
+
         string? hex = null;
         if (combo.SelectedIndex >= 0 && combo.SelectedIndex < AppSettings.ColourPresets.Length)
+        {
             hex = AppSettings.ColourPresets[combo.SelectedIndex].Hex;
+        }
+
         var color = AppSettings.ParseColor(hex ?? AppSettings.DefaultFormattableColour);
         preview.Background = color != null ? new SolidColorBrush(color.Value) : null;
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
+        if (ThemeCombo.SelectedIndex >= 0)
+        {
+            string theme = ThemeCombo.SelectedIndex switch
+            {
+                0 => AppSettings.ThemeLight,
+                1 => AppSettings.ThemeDark,
+                _ => AppSettings.ThemeDefault
+            };
+            AppSettings.SetTheme(theme);
+            App.ApplyTheme(this);
+            if (App.MainWindow != null)
+            {
+                App.ApplyTheme(App.MainWindow);
+            }
+        }
         if (FormattableColourCombo.SelectedIndex >= 0 && FormattableColourCombo.SelectedIndex < AppSettings.ColourPresets.Length)
+        {
             AppSettings.SetFormattableColour(AppSettings.ColourPresets[FormattableColourCombo.SelectedIndex].Hex);
+        }
+
         if (SystemDriveColourCombo.SelectedIndex >= 0 && SystemDriveColourCombo.SelectedIndex < AppSettings.ColourPresets.Length)
+        {
             AppSettings.SetSystemDriveColour(AppSettings.ColourPresets[SystemDriveColourCombo.SelectedIndex].Hex);
+        }
+
         if (NoLetterColourCombo.SelectedIndex >= 0 && NoLetterColourCombo.SelectedIndex < AppSettings.ColourPresets.Length)
+        {
             AppSettings.SetNoLetterColour(AppSettings.ColourPresets[NoLetterColourCombo.SelectedIndex].Hex);
+        }
+
         _onSaved?.Invoke();
         Close();
     }
@@ -141,8 +186,8 @@ public sealed partial class SettingsWindow : Window
     {
         try
         {
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+            var hwnd = WindowNative.GetWindowHandle(this);
+            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
             var appWindow = AppWindow.GetFromWindowId(windowId);
             appWindow.Resize(new Windows.Graphics.SizeInt32(width, height));
         }

@@ -76,6 +76,11 @@ DiskSeer can read and write drives formatted with non-Windows file systems:
 ### How it works
 DiskSeer uses the [DiscUtils](https://github.com/DiscUtils/DiscUtils) library to parse file system structures directly from raw disk sectors. This requires administrator privileges to access `\\.\PhysicalDriveN` devices.
 
+### Multicore and multithreading
+- **Drive enumeration**: When you refresh drives, each physical disk is scanned on a separate thread-pool thread (parallelism capped by core count, max 8) so multiple drives are detected concurrently.
+- **Batch file copy**: Copying multiple files to or from a foreign drive runs up to 2 copy operations concurrently (configurable) to use multiple cores without overwhelming a single disk.
+- **UI**: Long-running work (drive scan, directory load, copy) runs on background threads; progress and results are marshalled to the UI thread so the window stays responsive.
+
 ## File systems (DiskEraser)
 
 The format UI offers:

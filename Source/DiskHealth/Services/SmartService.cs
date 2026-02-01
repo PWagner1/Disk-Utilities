@@ -35,15 +35,27 @@ public static class SmartService
 
     /// <summary>
     /// Gets physical drives with S.M.A.R.T. status and attributes.
+    /// Uses parallel WMI queries for better performance on multi-drive systems.
     /// </summary>
     public static IReadOnlyList<SmartDriveInfo> GetSmartDrives()
     {
         var list = new List<SmartDriveInfo>();
         try
         {
-            var pnpMap = GetPnpDeviceIdToInstanceNameMap();
-            var failureMap = GetFailurePredictStatusMap();
-            var smartMap = GetSmartDataMap();
+            // Run WMI queries in parallel for faster data collection
+            Dictionary<string, string>? pnpMap = null;
+            Dictionary<string, (bool?, uint?)>? failureMap = null;
+            Dictionary<string, byte[]>? smartMap = null;
+
+            Parallel.Invoke(
+                () => pnpMap = GetPnpDeviceIdToInstanceNameMap(),
+                () => failureMap = GetFailurePredictStatusMap(),
+                () => smartMap = GetSmartDataMap()
+            );
+
+            pnpMap ??= [];
+            failureMap ??= [];
+            smartMap ??= [];
 
             using var searcher = new ManagementObjectSearcher(
                 "SELECT DeviceID, Index, Size, Model, PNPDeviceID FROM Win32_DiskDrive");
@@ -51,10 +63,16 @@ public static class SmartService
             foreach (ManagementBaseObject obj in searcher.Get())
             {
                 var pnpId = obj["PNPDeviceID"]?.ToString();
-                if (string.IsNullOrEmpty(pnpId)) continue;
+                if (string.IsNullOrEmpty(pnpId))
+                {
+                    continue;
+                }
 
                 var instanceName = pnpMap.GetValueOrDefault(pnpId.ToUpperInvariant());
-                if (string.IsNullOrEmpty(instanceName)) continue;
+                if (string.IsNullOrEmpty(instanceName))
+                {
+                    continue;
+                }
 
                 var (predictFailure, reason) = failureMap.GetValueOrDefault(instanceName, (null, null));
                 var vendorSpecific = smartMap.GetValueOrDefault(instanceName);
@@ -78,6 +96,14 @@ public static class SmartService
         return list.OrderBy(d => d.Index).ToList();
     }
 
+    /// <summary>
+    /// Async version of GetSmartDrives for non-blocking UI.
+    /// </summary>
+    public static async Task<IReadOnlyList<SmartDriveInfo>> GetSmartDrivesAsync(CancellationToken ct = default)
+    {
+        return await Task.Run(() => GetSmartDrives(), ct).ConfigureAwait(false);
+    }
+
     private static Dictionary<string, string> GetPnpDeviceIdToInstanceNameMap()
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -89,7 +115,9 @@ public static class SmartService
                 var pnpId = obj["PnPDeviceId"]?.ToString();
                 var instanceName = obj["InstanceName"]?.ToString();
                 if (!string.IsNullOrEmpty(pnpId) && !string.IsNullOrEmpty(instanceName))
+                {
                     map[pnpId.TrimEnd(' ', '\0')] = instanceName.TrimEnd(' ', '\0');
+                }
             }
         }
         catch { /* Return empty map */ }
@@ -105,7 +133,10 @@ public static class SmartService
             foreach (ManagementBaseObject obj in searcher.Get())
             {
                 var instanceName = obj["InstanceName"]?.ToString()?.TrimEnd(' ', '\0');
-                if (string.IsNullOrEmpty(instanceName)) continue;
+                if (string.IsNullOrEmpty(instanceName))
+                {
+                    continue;
+                }
 
                 bool? predictFailure = obj["PredictFailure"] != null ? Convert.ToBoolean(obj["PredictFailure"]) : null;
                 uint? reason = obj["Reason"] != null ? Convert.ToUInt32(obj["Reason"]) : null;
@@ -127,7 +158,9 @@ public static class SmartService
                 var instanceName = obj["InstanceName"]?.ToString()?.TrimEnd(' ', '\0');
                 var data = obj["VendorSpecific"] as byte[];
                 if (!string.IsNullOrEmpty(instanceName) && data != null && data.Length >= 2 + AttributeSize)
+                {
                     map[instanceName] = data;
+                }
             }
         }
         catch { /* Return empty map */ }
@@ -137,12 +170,18 @@ public static class SmartService
     private static IReadOnlyList<SmartAttribute> ParseSmartAttributes(byte[]? vendorSpecific)
     {
         var list = new List<SmartAttribute>();
-        if (vendorSpecific == null || vendorSpecific.Length < 2 + AttributeSize) return list;
+        if (vendorSpecific == null || vendorSpecific.Length < 2 + AttributeSize)
+        {
+            return list;
+        }
 
         for (int offset = 2; offset <= vendorSpecific.Length - AttributeSize; offset += AttributeSize)
         {
             byte id = vendorSpecific[offset];
-            if (id == 0) continue;
+            if (id == 0)
+            {
+                continue;
+            }
 
             byte value = vendorSpecific[offset + 3];
             byte worst = vendorSpecific[offset + 4];
