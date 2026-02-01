@@ -85,7 +85,8 @@
                             <ComboBox x:Name="SecureWipePresetCombo"
                                       PlaceholderText="Select passes..."
                                       HorizontalAlignment="Stretch"
-                                      SelectedIndex="0" />
+                                      SelectedIndex="0"
+                                      IsEnabled="{Binding IsChecked, ElementName=SecureDeletionCheck}" />
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>

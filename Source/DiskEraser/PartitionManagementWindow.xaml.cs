@@ -8,6 +8,7 @@ public sealed partial class PartitionManagementWindow : Window
 {
     private IReadOnlyList<DiskInfo> _disks = [];
     private readonly ObservableCollection<PartitionListEntry> _partitionEntries = [];
+    private readonly List<Microsoft.UI.Xaml.Shapes.Path> _pieSlicePaths = [];
 
     public PartitionManagementWindow()
     {
@@ -17,7 +18,15 @@ public sealed partial class PartitionManagementWindow : Window
         TrySetExtendedTitleBar();
         TrySetWindowSize(1245, 700);
         PartitionList.ItemsSource = _partitionEntries;
+        App.DiagramColoursChanged += OnDiagramColoursChanged;
+        Closed += (_, _) => App.DiagramColoursChanged -= OnDiagramColoursChanged;
         _ = LoadDisksAsync();
+    }
+
+    private void OnDiagramColoursChanged(object? sender, EventArgs e)
+    {
+        if (DiskCombo.SelectedItem is DiskInfo disk)
+            _ = BuildPieChartAsync(disk);
     }
 
     private void TrySetMicaBackdrop()
@@ -125,7 +134,7 @@ public sealed partial class PartitionManagementWindow : Window
             {
                 PieChartCanvas.Children.Clear();
             }
-
+            _pieSlicePaths.Clear();
             return;
         }
         ulong used = 0;
@@ -156,8 +165,8 @@ public sealed partial class PartitionManagementWindow : Window
         _ = BuildPieChartAsync(disk);
     }
 
-    /// <summary>Slice data computed on a background thread (no UI types).</summary>
-    private readonly record struct PieSliceData(double StartAngleDeg, double SweepDeg, Windows.UI.Color Color, string Label);
+    /// <summary>Slice data computed on a background thread (no UI types). Label = short for on-slice; Tooltip = full for hover.</summary>
+    private readonly record struct PieSliceData(double StartAngleDeg, double SweepDeg, Windows.UI.Color Color, string Label, string Tooltip);
 
     /// <summary>Computes pie slice angles, colors, and labels on a thread-pool thread; UI elements are created on the dispatcher.</summary>
     private async Task BuildPieChartAsync(DiskInfo disk)
@@ -200,7 +209,8 @@ public sealed partial class PartitionManagementWindow : Window
 
             Windows.UI.Color fill = p.IsProtected ? systemDrive : string.IsNullOrEmpty(p.DriveLetter) ? noLetter : formattable;
             string label = $"{p.DisplayLabel} — {p.FormattedSize} — {p.FileSystem}";
-            slices.Add(new PieSliceData(startAngleDeg, sweepDeg, fill, label));
+            string tooltip = p.GetTooltipText(disk.Status);
+            slices.Add(new PieSliceData(startAngleDeg, sweepDeg, fill, label, tooltip));
             startAngleDeg += sweepDeg;
         }
 
@@ -210,7 +220,8 @@ public sealed partial class PartitionManagementWindow : Window
         {
             double sweepDeg = 360.0 * (free / (double)total);
             string label = "Unallocated — " + FormatBytes(free);
-            slices.Add(new PieSliceData(startAngleDeg, sweepDeg, unallocated, label));
+            string tooltip = string.IsNullOrWhiteSpace(disk.Status) ? label : $"{label}\nHealth: {disk.Status.Trim()}";
+            slices.Add(new PieSliceData(startAngleDeg, sweepDeg, unallocated, label, tooltip));
         }
 
         return slices;
@@ -225,18 +236,51 @@ public sealed partial class PartitionManagementWindow : Window
         }
 
         PieChartCanvas.Children.Clear();
+        _pieSlicePaths.Clear();
 
         // Canvas is 520×300; center ellipse with 3D tilt (ry < rx).
         const double cx = 260, cy = 150, rx = 240, ry = 140;
+        const double depth = 18; // Vertical offset for 3D thickness
+
+        // 1. Base ellipse (bottom of pie) – dark, offset down for depth.
+        AddPieBaseToCanvas(PieChartCanvas, cx, cy + depth, rx, ry);
+
+        // 2. Back rim – rear half of ellipse (180°–360°) in darker shade so top slices appear in front.
+        AddPieBackRimToCanvas(PieChartCanvas, cx, cy, rx, ry);
+
+        // 3. Front slices (top of pie).
         foreach (var slice in slices)
         {
-            AddPieSliceToCanvas(PieChartCanvas, cx, cy, rx, ry, slice.StartAngleDeg, slice.SweepDeg, slice.Color, slice.Label);
+            var path = AddPieSliceToCanvas(PieChartCanvas, cx, cy, rx, ry, slice.StartAngleDeg, slice.SweepDeg, slice.Color, slice.Tooltip);
+            _pieSlicePaths.Add(path);
             // Annotate on the chart for slices big enough to read (≥ 20°).
             if (slice.SweepDeg >= 20.0)
             {
                 AddSliceLabelToCanvas(PieChartCanvas, cx, cy, rx, ry, slice.StartAngleDeg, slice.SweepDeg, slice.Label);
             }
         }
+    }
+
+    private void HighlightSlice(int index, bool highlight)
+    {
+        if (index < 0 || index >= _pieSlicePaths.Count) return;
+        var path = _pieSlicePaths[index];
+        path.StrokeThickness = highlight ? 3 : 1;
+        path.Stroke = highlight ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 0, 0));
+    }
+
+    private void PartitionRow_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not PartitionListEntry entry) return;
+        int index = _partitionEntries.IndexOf(entry);
+        HighlightSlice(index, true);
+    }
+
+    private void PartitionRow_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not PartitionListEntry entry) return;
+        int index = _partitionEntries.IndexOf(entry);
+        HighlightSlice(index, false);
     }
 
     /// <summary>Adds a label on the pie slice at its middle angle (on the UI thread).</summary>
@@ -269,6 +313,63 @@ public sealed partial class PartitionManagementWindow : Window
         canvas.Children.Add(tb);
     }
 
+    /// <summary>Draws the base ellipse (bottom of 3D pie) in a dark shade.</summary>
+    private static void AddPieBaseToCanvas(Canvas canvas, double cx, double cy, double rx, double ry)
+    {
+        var baseColor = Windows.UI.Color.FromArgb(255, 45, 45, 52);
+        var ellipse = new Microsoft.UI.Xaml.Shapes.Ellipse
+        {
+            Width = rx * 2,
+            Height = ry * 2,
+            Fill = new SolidColorBrush(baseColor),
+            Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(120, 0, 0, 0)),
+            StrokeThickness = 1
+        };
+        Canvas.SetLeft(ellipse, cx - rx);
+        Canvas.SetTop(ellipse, cy - ry);
+        canvas.Children.Add(ellipse);
+    }
+
+    /// <summary>Draws the back rim (rear half arc) so the top slices appear in front.</summary>
+    private static void AddPieBackRimToCanvas(Canvas canvas, double cx, double cy, double rx, double ry)
+    {
+        // Back half: from 180° to 360° (left side of ellipse when viewed from above).
+        const double startAngleDeg = 180.0;
+        const double sweepDeg = 180.0;
+        double startRad = startAngleDeg * Math.PI / 180.0;
+        double endRad = (startAngleDeg + sweepDeg) * Math.PI / 180.0;
+        double x1 = cx + rx * Math.Cos(startRad);
+        double y1 = cy + ry * Math.Sin(startRad);
+        double x2 = cx + rx * Math.Cos(endRad);
+        double y2 = cy + ry * Math.Sin(endRad);
+
+        var figure = new PathFigure
+        {
+            StartPoint = new Windows.Foundation.Point(cx, cy),
+            IsClosed = true
+        };
+        figure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(x1, y1) });
+        figure.Segments.Add(new ArcSegment
+        {
+            Point = new Windows.Foundation.Point(x2, y2),
+            Size = new Windows.Foundation.Size(rx, ry),
+            IsLargeArc = sweepDeg > 180,
+            SweepDirection = SweepDirection.Clockwise
+        });
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        var path = new Microsoft.UI.Xaml.Shapes.Path
+        {
+            Data = geometry,
+            Fill = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 55, 55, 62)),
+            Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(150, 0, 0, 0)),
+            StrokeThickness = 1
+        };
+        Canvas.SetLeft(path, 0);
+        Canvas.SetTop(path, 0);
+        canvas.Children.Add(path);
+    }
+
     /// <summary>Creates tooltip content with an Acrylic (Mica-style) frosted background for use in popups.</summary>
     private static FrameworkElement CreateMicaStyleToolTipContent(string text)
     {
@@ -296,7 +397,7 @@ public sealed partial class PartitionManagementWindow : Window
         };
     }
 
-    private static void AddPieSliceToCanvas(Canvas canvas, double cx, double cy, double rx, double ry, double startAngleDeg, double sweepDeg, Windows.UI.Color color, string? tooltip = null)
+    private static Microsoft.UI.Xaml.Shapes.Path AddPieSliceToCanvas(Canvas canvas, double cx, double cy, double rx, double ry, double startAngleDeg, double sweepDeg, Windows.UI.Color color, string? tooltip = null)
     {
         Microsoft.UI.Xaml.Shapes.Path pathShape;
 
@@ -357,6 +458,7 @@ public sealed partial class PartitionManagementWindow : Window
         Canvas.SetLeft(pathShape, 0);
         Canvas.SetTop(pathShape, 0);
         canvas.Children.Add(pathShape);
+        return pathShape;
     }
 
     private static string FormatBytes(ulong bytes)

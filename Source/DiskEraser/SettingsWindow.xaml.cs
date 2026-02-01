@@ -174,6 +174,7 @@ public sealed partial class SettingsWindow : Window
         }
 
         _onSaved?.Invoke();
+        App.NotifyDiagramColoursChanged();
         Close();
     }
 

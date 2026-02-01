@@ -11,6 +11,8 @@ public sealed partial class MainWindow : Window
     private string? _cachedFormattableHex, _cachedSystemHex, _cachedNoLetterHex;
     private SolidColorBrush? _cachedFormattableBrush, _cachedSystemBrush, _cachedNoLetterBrush, _cachedWhiteBrush;
 
+    public bool GetIsSecureDeleteActive { get; set; }
+
     public MainWindow()
     {
         InitializeComponent();
@@ -264,6 +266,14 @@ public sealed partial class MainWindow : Window
         _ = LoadDrivesAndDiagramAsync();
     }
 
+    /// <summary>Clears cached diagram brushes so the next BuildDiagram uses current AppSettings colours (e.g. after Settings save).</summary>
+    private void InvalidateDiagramColourCache()
+    {
+        _cachedFormattableHex = null;
+        _cachedSystemHex = null;
+        _cachedNoLetterHex = null;
+    }
+
     /// <summary>Builds the interactive disk/partition diagram. If <paramref name="disks"/> is null, fetches layout on the current thread.</summary>
     private void BuildDiagram(IReadOnlyList<DiskInfo>? disks = null)
     {
@@ -346,7 +356,7 @@ public sealed partial class MainWindow : Window
                         Background = blockBrush,
                         Foreground = whiteBrush
                     };
-                    ToolTipService.SetToolTip(block, $"{part.DisplayLabel} — {part.FormattedSize} — {part.FileSystem}");
+                    ToolTipService.SetToolTip(block, part.GetTooltipText(disk.Status));
                     block.Click += PartitionBlock_Click;
                     block.ContextFlyout = CreatePartitionContextMenu(part);
                     Grid.SetColumn(block, i);
@@ -523,7 +533,11 @@ public sealed partial class MainWindow : Window
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        var settingsWindow = new SettingsWindow(onSaved: () => _ = LoadDrivesAndDiagramAsync());
+        var settingsWindow = new SettingsWindow(onSaved: () =>
+        {
+            InvalidateDiagramColourCache();
+            _ = LoadDrivesAndDiagramAsync();
+        });
         settingsWindow.Activate();
     }
 

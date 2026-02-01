@@ -15,6 +15,9 @@ public sealed class DiskInfo
     /// <summary>Total disk size in bytes.</summary>
     public ulong Size { get; set; }
 
+    /// <summary>Disk status from WMI (e.g. "OK", "Pred Fail"); empty if unknown.</summary>
+    public string Status { get; set; } = string.Empty;
+
     /// <summary>Partitions on this disk, in order.</summary>
     public List<PartitionInfo> Partitions { get; set; } = [];
 

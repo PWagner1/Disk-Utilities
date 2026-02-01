@@ -87,19 +87,21 @@ public static class DriveService
             var volumeInfoByLetter = GetVolumeInfoByDriveLetter();
 
             using var diskSearcher = new ManagementObjectSearcher(
-                "SELECT DeviceID, Index, Size, Model FROM Win32_DiskDrive");
+                "SELECT DeviceID, Index, Size, Model, Status FROM Win32_DiskDrive");
             foreach (ManagementBaseObject diskObj in diskSearcher.Get())
             {
                 using var disk = (ManagementObject)diskObj;
                 int diskIndex = Convert.ToInt32(disk["Index"]);
                 ulong diskSize = disk["Size"] != null ? Convert.ToUInt64(disk["Size"]) : 0;
                 string model = disk["Model"]?.ToString()?.Trim() ?? $"Disk {diskIndex}";
+                string status = disk["Status"]?.ToString()?.Trim() ?? string.Empty;
 
                 var diskInfo = new DiskInfo
                 {
                     DiskIndex = diskIndex,
                     Model = model,
                     Size = diskSize,
+                    Status = status,
                     Partitions = []
                 };
 
@@ -123,6 +125,7 @@ public static class DriveService
                     string label = string.Empty;
                     string fileSystem = string.Empty;
                     ulong capacity = partSize;
+                    ulong freeSpace = 0;
 
                     try
                     {
@@ -136,6 +139,7 @@ public static class DriveService
                                 label = vol.Label;
                                 fileSystem = vol.FileSystem;
                                 capacity = vol.Capacity;
+                                freeSpace = vol.FreeSpace;
                             }
                             break;
                         }
@@ -154,6 +158,7 @@ public static class DriveService
                         Label = label,
                         FileSystem = fileSystem,
                         Capacity = capacity,
+                        FreeSpace = freeSpace,
                         IsProtected = driveLetter.Equals(ProtectedDriveLetter, StringComparison.OrdinalIgnoreCase)
                     });
                 }
@@ -175,14 +180,14 @@ public static class DriveService
     public static Task<IReadOnlyList<DiskInfo>> GetDiskPartitionLayoutAsync(CancellationToken cancellationToken = default)
         => Task.Run(GetDiskPartitionLayout, cancellationToken);
 
-    /// <summary>Builds a map of drive letter to volume label, file system, and capacity from Win32_Volume.</summary>
-    private static Dictionary<string, (string Label, string FileSystem, ulong Capacity)> GetVolumeInfoByDriveLetter()
+    /// <summary>Builds a map of drive letter to volume label, file system, capacity, and free space from Win32_Volume.</summary>
+    private static Dictionary<string, (string Label, string FileSystem, ulong Capacity, ulong FreeSpace)> GetVolumeInfoByDriveLetter()
     {
-        var map = new Dictionary<string, (string, string, ulong)>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, (string, string, ulong, ulong)>(StringComparer.OrdinalIgnoreCase);
         try
         {
             using var searcher = new ManagementObjectSearcher(
-                "SELECT DriveLetter, Label, FileSystem, Capacity FROM Win32_Volume WHERE DriveLetter IS NOT NULL");
+                "SELECT DriveLetter, Label, FileSystem, Capacity, FreeSpace FROM Win32_Volume WHERE DriveLetter IS NOT NULL");
             foreach (ManagementBaseObject obj in searcher.Get())
             {
                 var letter = obj["DriveLetter"]?.ToString()?.Trim().ToUpperInvariant();
@@ -194,7 +199,8 @@ public static class DriveService
                 map[letter] = (
                     obj["Label"]?.ToString() ?? string.Empty,
                     obj["FileSystem"]?.ToString() ?? string.Empty,
-                    obj["Capacity"] != null ? Convert.ToUInt64(obj["Capacity"]) : 0);
+                    obj["Capacity"] != null ? Convert.ToUInt64(obj["Capacity"]) : 0,
+                    obj["FreeSpace"] != null ? Convert.ToUInt64(obj["FreeSpace"]) : 0);
             }
         }
         catch { /* ignore */ }

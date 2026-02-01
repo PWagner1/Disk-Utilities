@@ -27,6 +27,9 @@ public sealed class PartitionInfo
     /// <summary>Total capacity in bytes (from volume); may match <see cref="Size"/>.</summary>
     public ulong Capacity { get; set; }
 
+    /// <summary>Free space in bytes (from volume); 0 if not available.</summary>
+    public ulong FreeSpace { get; set; }
+
     /// <summary>True if this is the protected system drive (C:).</summary>
     public bool IsProtected { get; set; }
 
@@ -37,6 +40,35 @@ public sealed class PartitionInfo
 
     /// <summary>Formatted size string (e.g. "100 GB").</summary>
     public string FormattedSize => FormatBytes(Size);
+
+    /// <summary>Formatted free space string (e.g. "45 GB"); empty if unknown.</summary>
+    public string FormattedFreeSpace => Capacity > 0 ? FormatBytes(FreeSpace) : string.Empty;
+
+    /// <summary>Percent of capacity that is free (0–100); null if capacity unknown or zero.</summary>
+    public double? PercentFree => Capacity > 0 ? (double)FreeSpace / Capacity * 100.0 : null;
+
+    /// <summary>Percent of capacity that is used (0–100); null if capacity unknown or zero.</summary>
+    public double? PercentUsed => PercentFree.HasValue ? 100.0 - PercentFree.Value : null;
+
+    /// <summary>Builds rich tooltip text: label, size, file system, percent free/used, and optional disk health.</summary>
+    public string GetTooltipText(string? diskHealth = null)
+    {
+        var lines = new List<string>
+        {
+            $"{DisplayLabel} — {FormattedSize} — {FileSystem}"
+        };
+        if (PercentFree.HasValue)
+        {
+            double pctFree = PercentFree.Value;
+            double pctUsed = 100.0 - pctFree;
+            lines.Add($"{pctUsed:0}% used, {pctFree:0}% free ({FormattedFreeSpace} free)");
+        }
+        if (!string.IsNullOrWhiteSpace(diskHealth))
+        {
+            lines.Add($"Health: {diskHealth.Trim()}");
+        }
+        return string.Join("\n", lines);
+    }
 
     private static string FormatBytes(ulong bytes)
     {

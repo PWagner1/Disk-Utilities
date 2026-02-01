@@ -38,5 +38,11 @@ public partial class App : Application
     /// <summary>Main window reference for applying theme when changed in Settings.</summary>
     internal static Window? MainWindow => (Current as App)?._mWindow;
 
+    /// <summary>Raised when diagram colours are saved in Settings so other windows (e.g. Partition Management) can refresh.</summary>
+    internal static event EventHandler? DiagramColoursChanged;
+
+    /// <summary>Raises <see cref="DiagramColoursChanged"/> so open windows can update diagram colours.</summary>
+    internal static void NotifyDiagramColoursChanged() => DiagramColoursChanged?.Invoke(null, EventArgs.Empty);
+
     private MainWindow? _mWindow;
 }
