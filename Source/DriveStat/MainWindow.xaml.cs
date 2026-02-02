@@ -17,6 +17,9 @@ public sealed partial class MainWindow : Window
         TrySetExtendedTitleBar();
         TrySetWindowSize(1400, 800);
         LoadDrives();
+        Treemap.RevealInExplorerRequested += Treemap_RevealInExplorerRequested;
+        Treemap.FileInfoRequested += Treemap_FileInfoRequested;
+        TreemapScrollViewer.PointerWheelChanged += TreemapScrollViewer_PointerWheelChanged;
     }
 
     private void TrySetMicaBackdrop()
@@ -212,6 +215,85 @@ public sealed partial class MainWindow : Window
             Treemap.Root = dn;
             Treemap.ExtensionColors = _extensionColorMap;
         }
+    }
+
+    private void ZoomInButton_Click(object sender, RoutedEventArgs e)
+    {
+        var sv = TreemapScrollViewer;
+        var newZoom = Math.Min(sv.ZoomFactor + 0.25, sv.MaxZoomFactor);
+        sv.ZoomToFactor((float)newZoom);
+        UpdateZoomLabel();
+    }
+
+    private void ZoomOutButton_Click(object sender, RoutedEventArgs e)
+    {
+        var sv = TreemapScrollViewer;
+        var newZoom = Math.Max(sv.ZoomFactor - 0.25, sv.MinZoomFactor);
+        sv.ZoomToFactor((float)newZoom);
+        UpdateZoomLabel();
+    }
+
+    private void TreemapScrollViewer_PointerWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (e.KeyModifiers == Windows.System.VirtualKeyModifiers.Control)
+        {
+            var delta = e.GetCurrentPoint(TreemapScrollViewer).Properties.MouseWheelDelta;
+            if (delta != 0)
+            {
+                var sv = TreemapScrollViewer;
+                var factor = delta > 0 ? 1.25 : 0.8;
+                var newZoom = Math.Clamp(sv.ZoomFactor * factor, sv.MinZoomFactor, sv.MaxZoomFactor);
+                sv.ZoomToFactor((float)newZoom);
+                UpdateZoomLabel();
+                e.Handled = true;
+            }
+        }
+    }
+
+    private void TreemapScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (!e.IsIntermediate)
+        {
+            UpdateZoomLabel();
+        }
+    }
+
+    private void UpdateZoomLabel()
+    {
+        if (ZoomLabel != null)
+        {
+            ZoomLabel.Text = $"{(int)(TreemapScrollViewer.ZoomFactor * 100)}%";
+        }
+    }
+
+    private async void Treemap_RevealInExplorerRequested(object? sender, DirectoryNode node)
+    {
+        try
+        {
+            if (node.IsDirectory && Directory.Exists(node.FullPath))
+            {
+                await Windows.System.Launcher.LaunchFolderPathAsync(node.FullPath);
+            }
+            else if (!node.IsDirectory && File.Exists(node.FullPath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{node.FullPath}\"",
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Could not open Explorer: {ex.Message}";
+        }
+    }
+
+    private void Treemap_FileInfoRequested(object? sender, DirectoryNode node)
+    {
+        var infoWindow = new FileInfoWindow(node);
+        infoWindow.Activate();
     }
 
     private void Treemap_SelectionChanged(object? sender, DirectoryNode? node)

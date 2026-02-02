@@ -66,6 +66,12 @@ public sealed partial class TreemapControl : UserControl
 
     public event EventHandler<DirectoryNode?>? SelectionChanged;
 
+    /// <summary>Raised when the user chooses "Reveal in Explorer" from the context menu.</summary>
+    public event EventHandler<DirectoryNode>? RevealInExplorerRequested;
+
+    /// <summary>Raised when the user chooses "More Information" from the context menu.</summary>
+    public event EventHandler<DirectoryNode>? FileInfoRequested;
+
     public TreemapControl()
     {
         InitializeComponent();
@@ -216,6 +222,8 @@ public sealed partial class TreemapControl : UserControl
                 }
             };
 
+            container.ContextFlyout = CreateContextMenu(node);
+
             TreemapCanvas.Children.Add(container);
         }
     }
@@ -255,6 +263,20 @@ public sealed partial class TreemapControl : UserControl
                 }
             }
         }
+    }
+
+    private MenuFlyout CreateContextMenu(DirectoryNode node)
+    {
+        var revealItem = new MenuFlyoutItem { Text = "Reveal in Explorer" };
+        revealItem.Click += (_, _) => RevealInExplorerRequested?.Invoke(this, node);
+
+        var infoItem = new MenuFlyoutItem { Text = "More Information" };
+        infoItem.Click += (_, _) => FileInfoRequested?.Invoke(this, node);
+
+        var flyout = new MenuFlyout();
+        flyout.Items.Add(revealItem);
+        flyout.Items.Add(infoItem);
+        return flyout;
     }
 
     private Windows.UI.Color GetColor(DirectoryNode node)

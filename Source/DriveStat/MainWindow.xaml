@@ -84,8 +84,16 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Text="Treemap" FontWeight="SemiBold" Margin="0,0,0,8" />
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                            <TextBlock Text="Treemap" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Button x:Name="ZoomOutButton" Content="-" Width="28" Height="28" Padding="0" Click="ZoomOutButton_Click" ToolTipService.ToolTip="Zoom out" />
+                            <Button x:Name="ZoomInButton" Content="+" Width="28" Height="28" Padding="0" Click="ZoomInButton_Click" ToolTipService.ToolTip="Zoom in" />
+                            <TextBlock x:Name="ZoomLabel" Text="100%" VerticalAlignment="Center" MinWidth="40" />
+                        </StackPanel>
+                        <ScrollViewer x:Name="TreemapScrollViewer" Grid.Row="1"
+                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                      ZoomMode="Enabled" MinZoomFactor="0.25" MaxZoomFactor="4"
+                                      ViewChanged="TreemapScrollViewer_ViewChanged">
                             <controls:TreemapControl x:Name="Treemap"
                                                      SelectionChanged="Treemap_SelectionChanged"
                                                      HorizontalAlignment="Stretch"
