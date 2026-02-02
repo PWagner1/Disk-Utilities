@@ -90,7 +90,9 @@ public sealed class HandleService
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(targetPath))
+        {
             return [];
+        }
 
         var normalizedTarget = NormalizePath(targetPath.Trim());
         var results = new List<HandleInfo>();
@@ -106,7 +108,9 @@ public sealed class HandleService
                 var status = NtQuerySystemInformation(SystemExtendedHandleInformation, buffer, bufferSize, out var returnLength);
 
                 if (status == 0)
+                {
                     break;
+                }
 
                 Marshal.FreeHGlobal(buffer);
                 buffer = nint.Zero;
@@ -133,18 +137,24 @@ public sealed class HandleService
 
                 // Filter by object type: 28 = File on Windows 10/11; comprehensive mode tries all
                 if (!comprehensiveSearch && !FileObjectTypeIndices.Contains(entry.ObjectTypeIndex))
+                {
                     continue;
+                }
 
                 var processId = (int)entry.UniqueProcessId;
                 var handleValue = entry.HandleValue;
 
                 var path = await Task.Run(() => TryGetPathForHandle(processId, handleValue), cancellationToken);
                 if (string.IsNullOrEmpty(path))
+                {
                     continue;
+                }
 
                 var normalizedPath = NormalizePath(path);
                 if (!PathMatches(normalizedTarget, normalizedPath))
+                {
                     continue;
+                }
 
                 var processName = GetProcessName(processId);
                 results.Add(new HandleInfo
@@ -161,7 +171,9 @@ public sealed class HandleService
         finally
         {
             if (buffer != nint.Zero)
+            {
                 Marshal.FreeHGlobal(buffer);
+            }
         }
 
         // Fallback: if no results with type filter, retry with comprehensive search (different Windows versions)
@@ -182,7 +194,9 @@ public sealed class HandleService
         {
             processHandle = OpenProcess(PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
             if (processHandle == nint.Zero)
+            {
                 return null;
+            }
 
             var status = NtDuplicateObject(
                 processHandle,
@@ -194,12 +208,16 @@ public sealed class HandleService
                 DUPLICATE_SAME_ACCESS);
 
             if (status != 0 || duplicateHandle == nint.Zero)
+            {
                 return null;
+            }
 
             var sb = new StringBuilder(512);
             var len = GetFinalPathNameByHandleW(duplicateHandle, sb, sb.Capacity, FILE_NAME_NORMALIZED);
             if (len <= 0)
+            {
                 return null;
+            }
 
             if (len > sb.Capacity)
             {
@@ -208,16 +226,24 @@ public sealed class HandleService
             }
 
             if (len <= 0)
+            {
                 return null;
+            }
 
             var path = sb.ToString();
             // Strip \??\ or \\?\ prefix
             if (path.StartsWith(@"\??\", StringComparison.Ordinal))
+            {
                 path = path[4..];
+            }
             else if (path.StartsWith(@"\\?\UNC\", StringComparison.Ordinal))
+            {
                 path = @"\\" + path[7..];
+            }
             else if (path.StartsWith(@"\\?\", StringComparison.Ordinal))
+            {
                 path = path[4..];
+            }
 
             return path;
         }
@@ -228,9 +254,14 @@ public sealed class HandleService
         finally
         {
             if (duplicateHandle != nint.Zero)
+            {
                 CloseHandle(duplicateHandle);
+            }
+
             if (processHandle != nint.Zero)
+            {
                 CloseHandle(processHandle);
+            }
         }
     }
 
@@ -251,14 +282,20 @@ public sealed class HandleService
     {
         // Exact match
         if (target.Equals(handlePath, StringComparison.OrdinalIgnoreCase))
+        {
             return true;
+        }
 
         // Target is a directory - match if handle path is inside it
         if (handlePath.StartsWith(target + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
             return true;
+        }
 
         if (handlePath.StartsWith(target + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
             return true;
+        }
 
         return false;
     }
@@ -288,7 +325,9 @@ public sealed class HandleService
         {
             processHandle = OpenProcess(PROCESS_DUP_HANDLE, false, processId);
             if (processHandle == nint.Zero)
+            {
                 return false;
+            }
 
             var status = NtDuplicateObject(
                 processHandle,
@@ -308,7 +347,9 @@ public sealed class HandleService
         finally
         {
             if (processHandle != nint.Zero)
+            {
                 CloseHandle(processHandle);
+            }
         }
     }
 

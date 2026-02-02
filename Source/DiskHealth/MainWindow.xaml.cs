@@ -241,7 +241,10 @@ public sealed partial class MainWindow : Window
         try
         {
             if (Content?.XamlRoot == null)
+            {
                 throw new InvalidOperationException("Window not ready");
+            }
+
             var dialog = new ContentDialog
             {
                 Title = "Disk Health",

@@ -103,7 +103,7 @@ public sealed partial class MainWindow : Window
         _selectedDrive = null;
         _selectedPartition = null;
 
-        if (DriveCombo.SelectedItem is ComboBoxItem item && item.Tag is ForeignDriveInfo drive)
+        if (DriveCombo.SelectedItem is ComboBoxItem { Tag: ForeignDriveInfo drive })
         {
             _selectedDrive = drive;
 
@@ -140,7 +140,7 @@ public sealed partial class MainWindow : Window
         _selectedPartition = null;
         OpenPartitionButton.IsEnabled = false;
 
-        if (PartitionCombo.SelectedItem is ComboBoxItem item && item.Tag is ForeignPartitionInfo partition)
+        if (PartitionCombo.SelectedItem is ComboBoxItem { Tag: ForeignPartitionInfo partition })
         {
             _selectedPartition = partition;
             OpenPartitionButton.IsEnabled = partition.IsSupported;
@@ -306,7 +306,7 @@ public sealed partial class MainWindow : Window
 
     private async void BreadcrumbItem_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button btn && btn.Tag is string path)
+        if (sender is Button { Tag: string path })
         {
             if (path != _currentPath)
             {

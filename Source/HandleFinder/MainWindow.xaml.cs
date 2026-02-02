@@ -78,25 +78,29 @@ public sealed partial class MainWindow : Window
     {
         var picker = new FolderPicker();
         var hwnd = WindowNative.GetWindowHandle(this);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        InitializeWithWindow.Initialize(picker, hwnd);
         picker.SuggestedStartLocation = PickerLocationId.ComputerFolder;
 
         var folder = await picker.PickSingleFolderAsync();
         if (folder != null)
+        {
             PathBox.Text = folder.Path;
+        }
     }
 
     private async void BrowseFile_Click(object sender, RoutedEventArgs e)
     {
         var picker = new FileOpenPicker();
         var hwnd = WindowNative.GetWindowHandle(this);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        InitializeWithWindow.Initialize(picker, hwnd);
         picker.FileTypeFilter.Add("*");
         picker.SuggestedStartLocation = PickerLocationId.ComputerFolder;
 
         var file = await picker.PickSingleFileAsync();
         if (file != null)
+        {
             PathBox.Text = file.Path;
+        }
     }
 
     private async void FindButton_Click(object sender, RoutedEventArgs e)
@@ -109,7 +113,7 @@ public sealed partial class MainWindow : Window
         }
 
         // Normalize drive-only input (e.g. "C:" -> "C:\")
-        if (path.Length == 2 && path[1] == ':' && char.IsLetter(path[0]))
+        if (path is [_, ':'] && char.IsLetter(path[0]))
         {
             path = path + "\\";
         }
@@ -160,10 +164,16 @@ public sealed partial class MainWindow : Window
         try
         {
             if (Path.Exists(path))
+            {
                 return true;
+            }
+
             // Drive root (e.g. C:\) - Directory.Exists is more reliable for drives
-            if (path.Length >= 2 && path[1] == ':' && path.EndsWith("\\"))
+            if (path is [_, ':', ..] && path.EndsWith("\\"))
+            {
                 return Directory.Exists(path);
+            }
+
             return false;
         }
         catch
@@ -182,7 +192,9 @@ public sealed partial class MainWindow : Window
     private async void CloseHandleButton_Click(object sender, RoutedEventArgs e)
     {
         if (HandlesList.SelectedItem is not HandleInfo handle)
+        {
             return;
+        }
 
         var dialog = new ContentDialog
         {
@@ -195,7 +207,9 @@ public sealed partial class MainWindow : Window
         };
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
             return;
+        }
 
         if (HandleService.TryCloseHandle(handle.ProcessId, handle.HandleValue))
         {
@@ -211,7 +225,9 @@ public sealed partial class MainWindow : Window
     private async void EndProcessButton_Click(object sender, RoutedEventArgs e)
     {
         if (HandlesList.SelectedItem is not HandleInfo handle)
+        {
             return;
+        }
 
         var dialog = new ContentDialog
         {
@@ -224,7 +240,9 @@ public sealed partial class MainWindow : Window
         };
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
             return;
+        }
 
         if (HandleService.TryTerminateProcess(handle.ProcessId))
         {

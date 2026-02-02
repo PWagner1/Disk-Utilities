@@ -52,7 +52,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Top">
                     <TextBlock Text="Disk usage" FontWeight="SemiBold" />
-                    <Border BorderBrush="Gray" BorderThickness="1" Padding="8" CornerRadius="4" Background="#1A1A1A">
+                    <Border BorderBrush="Gray" BorderThickness="1" Padding="8" CornerRadius="4" Background="Transparent">
                         <Canvas x:Name="PieChartCanvas" Width="520" Height="300" />
                     </Border>
                 </StackPanel>

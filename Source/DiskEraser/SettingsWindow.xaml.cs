@@ -6,13 +6,12 @@ namespace DiskEraser;
 public sealed partial class SettingsWindow : Window
 {
     private readonly Action? _onSaved;
-    private readonly WindowUtilities _windowUtilities;
 
     /// <param name="onSaved">Optional callback invoked when Save is clicked (e.g. to refresh the diagram).</param>
     public SettingsWindow(Action? onSaved = null)
     {
         _onSaved = onSaved;
-        
+
         InitializeComponent();
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
@@ -23,10 +22,7 @@ public sealed partial class SettingsWindow : Window
         LoadCurrentColours();
         UpdateColourPreviews();
         App.ApplyTheme(this);
-
-        // Replaced the non-existent `MaximizeBox` property with a Win32-based attempt
-        // to remove the maximize button from the window frame on Windows.
-        _windowUtilities?.TryDisableMaximizeBox();
+        WindowUtilities.TryDisableMaximizeBox(this);
     }
 
     private void LoadThemeOptions()
@@ -55,6 +51,7 @@ public sealed partial class SettingsWindow : Window
             FormattableColourCombo.Items.Add(name);
             SystemDriveColourCombo.Items.Add(name);
             NoLetterColourCombo.Items.Add(name);
+            UnallocatedColourCombo.Items.Add(name);
         }
     }
 
@@ -63,6 +60,7 @@ public sealed partial class SettingsWindow : Window
         SelectColour(FormattableColourCombo, AppSettings.GetFormattableColour());
         SelectColour(SystemDriveColourCombo, AppSettings.GetSystemDriveColour());
         SelectColour(NoLetterColourCombo, AppSettings.GetNoLetterColour());
+        SelectColour(UnallocatedColourCombo, AppSettings.GetUnallocatedColour());
     }
 
     /// <summary>Applies Mica backdrop on Windows 11; no-op on older Windows.</summary>
@@ -127,6 +125,7 @@ public sealed partial class SettingsWindow : Window
         SetPreviewFromCombo(root?.FindName("FormattableColourPreview") as Border, FormattableColourCombo);
         SetPreviewFromCombo(root?.FindName("SystemDriveColourPreview") as Border, SystemDriveColourCombo);
         SetPreviewFromCombo(root?.FindName("NoLetterColourPreview") as Border, NoLetterColourCombo);
+        SetPreviewFromCombo(root?.FindName("UnallocatedColourPreview") as Border, UnallocatedColourCombo);
     }
 
     private static void SetPreviewFromCombo(Border? preview, ComboBox? combo)
@@ -176,6 +175,11 @@ public sealed partial class SettingsWindow : Window
         if (NoLetterColourCombo.SelectedIndex >= 0 && NoLetterColourCombo.SelectedIndex < AppSettings.ColourPresets.Length)
         {
             AppSettings.SetNoLetterColour(AppSettings.ColourPresets[NoLetterColourCombo.SelectedIndex].Hex);
+        }
+
+        if (UnallocatedColourCombo.SelectedIndex >= 0 && UnallocatedColourCombo.SelectedIndex < AppSettings.ColourPresets.Length)
+        {
+            AppSettings.SetUnallocatedColour(AppSettings.ColourPresets[UnallocatedColourCombo.SelectedIndex].Hex);
         }
 
         _onSaved?.Invoke();

@@ -148,6 +148,29 @@ public sealed partial class MainWindow : Window
         }
 
         FileSystemCombo.SelectedIndex = 0;
+        UpdateCompressionCheckState();
+    }
+
+    /// <summary>Enables compression checkbox only when a file system that supports it (NTFS, ReFS) is selected.</summary>
+    private void UpdateCompressionCheckState()
+    {
+        if (CompressionCheck == null)
+        {
+            return;
+        }
+
+        string? fs = FileSystemCombo?.SelectedItem?.ToString();
+        bool supported = fs is "NTFS" or "ReFS";
+        CompressionCheck.IsEnabled = supported;
+        if (!supported && CompressionCheck.IsChecked == true)
+        {
+            CompressionCheck.IsChecked = false;
+        }
+    }
+
+    private void FileSystemCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateCompressionCheckState();
     }
 
     /// <summary>Loads drives and disk layout on thread-pool threads, then updates UI on the dispatcher.</summary>
@@ -327,11 +350,11 @@ public sealed partial class MainWindow : Window
             else
             {
                 var barGrid = new Grid { Height = barHeight, MinWidth = 200 };
-                for (int i = 0; i < disk.Partitions.Count; i++)
+                foreach (var t in disk.Partitions)
                 {
                     barGrid.ColumnDefinitions.Add(new ColumnDefinition
                     {
-                        Width = new GridLength(Math.Max(disk.Partitions[i].Size, 1), GridUnitType.Star)
+                        Width = new GridLength(Math.Max(t.Size, 1), GridUnitType.Star)
                     });
                 }
                 for (int i = 0; i < disk.Partitions.Count; i++)
@@ -582,7 +605,7 @@ public sealed partial class MainWindow : Window
         }
 
         char c = input.Trim().ToUpperInvariant()[0];
-        if (c >= 'A' && c <= 'Z')
+        if (c is >= 'A' and <= 'Z')
         {
             return c + ":";
         }

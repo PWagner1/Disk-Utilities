@@ -22,7 +22,10 @@ public partial class App : Application
         e.Handled = true;
         var msg = e.Exception?.Message ?? "An unexpected error occurred.";
         if (e.Exception is UnauthorizedAccessException)
+        {
             msg = "Administrator privileges are required for raw disk access. Please run the application as administrator.";
+        }
+
         ShowMessageBox("Disk Health - Error", msg);
     }
 

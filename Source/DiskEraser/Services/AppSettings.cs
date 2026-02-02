@@ -9,6 +9,7 @@ public static class AppSettings
     private const string KeyFormattableColour = "DiagramColourFormattable";
     private const string KeySystemDriveColour = "DiagramColourSystemDrive";
     private const string KeyNoLetterColour = "DiagramColourNoLetter";
+    private const string KeyUnallocatedColour = "DiagramColourUnallocated";
     private const string KeyTheme = "AppTheme";
 
     /// <summary>Theme values: Light, Dark, or Default (use system).</summary>
@@ -36,6 +37,9 @@ public static class AppSettings
 
     /// <summary>Default colour for partitions with no drive letter (e.g. Dark Gray).</summary>
     public const string DefaultNoLetterColour = "#FF4A4A4A";
+
+    /// <summary>Default colour for unallocated space (e.g. Dark Gray).</summary>
+    public const string DefaultUnallocatedColour = "#FF4A4A4A";
 
     /// <summary>Gets the diagram colour for formattable partitions (hex #AARRGGBB).</summary>
     public static string GetFormattableColour()
@@ -71,6 +75,18 @@ public static class AppSettings
     public static void SetNoLetterColour(string? value)
     {
         SetString(KeyNoLetterColour, value ?? DefaultNoLetterColour);
+    }
+
+    /// <summary>Gets the diagram colour for unallocated space (hex #AARRGGBB).</summary>
+    public static string GetUnallocatedColour()
+    {
+        return GetString(KeyUnallocatedColour, DefaultUnallocatedColour);
+    }
+
+    /// <summary>Sets the diagram colour for unallocated space (hex #AARRGGBB).</summary>
+    public static void SetUnallocatedColour(string? value)
+    {
+        SetString(KeyUnallocatedColour, value ?? DefaultUnallocatedColour);
     }
 
     private static string GetString(string key, string defaultValue)

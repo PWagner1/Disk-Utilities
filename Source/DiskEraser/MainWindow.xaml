@@ -59,7 +59,8 @@
                         <ComboBox x:Name="FileSystemCombo"
                                   PlaceholderText="Select file system..."
                                   HorizontalAlignment="Stretch"
-                                  SelectedIndex="0" />
+                                  SelectedIndex="0"
+                                  SelectionChanged="FileSystemCombo_SelectionChanged" />
                     </StackPanel>
                     <StackPanel Spacing="4">
                         <TextBlock Text="Volume label (optional)" FontWeight="SemiBold" />

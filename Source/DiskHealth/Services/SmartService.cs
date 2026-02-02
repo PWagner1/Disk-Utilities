@@ -157,7 +157,7 @@ public static class SmartService
             {
                 var instanceName = obj["InstanceName"]?.ToString()?.TrimEnd(' ', '\0');
                 var data = obj["VendorSpecific"] as byte[];
-                if (!string.IsNullOrEmpty(instanceName) && data != null && data.Length >= 2 + AttributeSize)
+                if (!string.IsNullOrEmpty(instanceName) && data is { Length: >= 2 + AttributeSize })
                 {
                     map[instanceName] = data;
                 }

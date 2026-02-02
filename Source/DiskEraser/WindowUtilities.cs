@@ -8,19 +8,26 @@ public sealed class WindowUtilities
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOZORDER = 0x0004;
     private const uint SWP_FRAMECHANGED = 0x0020;
-    private SettingsWindow _settingsWindow;
 
     /// <summary>
     /// Attempts to remove the maximize button from the window frame on Windows by clearing WS_MAXIMIZEBOX.
     /// This replaces the WinForms-style `MaximizeBox = false;` which does not exist on WinUI Window.
     /// This method is best-effort and silently fails on platforms where user32 calls are unavailable.
     /// </summary>
-    public void TryDisableMaximizeBox()
+    public static void TryDisableMaximizeBox(Window? window)
     {
+        if (window == null)
+        {
+            return;
+        }
+
         try
         {
-            var hwnd = WindowNative.GetWindowHandle(_settingsWindow);
-            if (hwnd == IntPtr.Zero) return;
+            var hwnd = WindowNative.GetWindowHandle(window);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
 
             if (IntPtr.Size == 8)
             {

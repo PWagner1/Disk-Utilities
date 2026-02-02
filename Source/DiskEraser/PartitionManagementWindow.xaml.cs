@@ -9,7 +9,6 @@ public sealed partial class PartitionManagementWindow : Window
     private IReadOnlyList<DiskInfo> _disks = [];
     private readonly ObservableCollection<PartitionListEntry> _partitionEntries = [];
     private readonly List<Microsoft.UI.Xaml.Shapes.Path> _pieSlicePaths = [];
-    private readonly WindowUtilities _windowUtilities;
 
     public PartitionManagementWindow()
     {
@@ -22,14 +21,15 @@ public sealed partial class PartitionManagementWindow : Window
         App.DiagramColoursChanged += OnDiagramColoursChanged;
         Closed += (_, _) => App.DiagramColoursChanged -= OnDiagramColoursChanged;
         _ = LoadDisksAsync();
-
-        _windowUtilities.TryDisableMaximizeBox();
+        WindowUtilities.TryDisableMaximizeBox(this);
     }
 
     private void OnDiagramColoursChanged(object? sender, EventArgs e)
     {
         if (DiskCombo.SelectedItem is DiskInfo disk)
+        {
             _ = BuildPieChartAsync(disk);
+        }
     }
 
     private void TrySetMicaBackdrop()
@@ -172,7 +172,8 @@ public sealed partial class PartitionManagementWindow : Window
     private readonly record struct PieSliceData(double StartAngleDeg, double SweepDeg, Windows.UI.Color Color, string Label, string Tooltip);
 
     /// <summary>Computes pie slice angles, colors, and labels on a thread-pool thread; UI elements are created on the dispatcher.</summary>
-    private async Task BuildPieChartAsync(DiskInfo disk)
+    /// <param name="selectedSliceIndex">When set, rotates the pie so this slice faces the user (bottom/front).</param>
+    private async Task BuildPieChartAsync(DiskInfo disk, int? selectedSliceIndex = null)
     {
         if (PieChartCanvas == null)
         {
@@ -187,7 +188,7 @@ public sealed partial class PartitionManagementWindow : Window
             return;
         }
 
-        queue.TryEnqueue(() => CreatePieChartFromData(slices));
+        queue.TryEnqueue(() => CreatePieChartFromData(slices, selectedSliceIndex));
     }
 
     /// <summary>Runs on any thread; returns slice parameters and labels (no UI objects).</summary>
@@ -200,7 +201,7 @@ public sealed partial class PartitionManagementWindow : Window
         Windows.UI.Color formattable = AppSettings.ParseColor(AppSettings.GetFormattableColour()) ?? Colors.SteelBlue;
         Windows.UI.Color systemDrive = AppSettings.ParseColor(AppSettings.GetSystemDriveColour()) ?? Colors.OrangeRed;
         Windows.UI.Color noLetter = AppSettings.ParseColor(AppSettings.GetNoLetterColour()) ?? Colors.Gray;
-        Windows.UI.Color unallocated = Colors.DarkGray;
+        Windows.UI.Color unallocated = AppSettings.ParseColor(AppSettings.GetUnallocatedColour()) ?? Colors.DarkGray;
 
         foreach (var p in disk.Partitions)
         {
@@ -231,7 +232,8 @@ public sealed partial class PartitionManagementWindow : Window
     }
 
     /// <summary>Runs on UI thread; creates chart with labels on each slice.</summary>
-    private void CreatePieChartFromData(List<PieSliceData> slices)
+    /// <param name="selectedSliceIndex">When valid, rotates the pie so this slice faces the user (bottom/front at 90°).</param>
+    private void CreatePieChartFromData(List<PieSliceData> slices, int? selectedSliceIndex = null)
     {
         if (PieChartCanvas == null)
         {
@@ -245,43 +247,112 @@ public sealed partial class PartitionManagementWindow : Window
         const double cx = 260, cy = 150, rx = 240, ry = 140;
         const double depth = 18; // Vertical offset for 3D thickness
 
+        // Rotation: bring selected slice center to 90° (bottom/front of 3D pie).
+        double offset = 0;
+        if (selectedSliceIndex is >= 0 && selectedSliceIndex.Value < slices.Count)
+        {
+            var sel = slices[selectedSliceIndex.Value];
+            double centerAngle = sel.StartAngleDeg + sel.SweepDeg * 0.5;
+            offset = 90.0 - centerAngle;
+        }
+
         // 1. Base ellipse (bottom of pie) – dark, offset down for depth.
         AddPieBaseToCanvas(PieChartCanvas, cx, cy + depth, rx, ry);
 
-        // 2. Back rim – rear half of ellipse (180°–360°) in darker shade so top slices appear in front.
-        AddPieBackRimToCanvas(PieChartCanvas, cx, cy, rx, ry);
+        // 2. Back rim – rear half of ellipse, rotated with the pie.
+        AddPieBackRimToCanvas(PieChartCanvas, cx, cy, rx, ry, offset);
 
-        // 3. Front slices (top of pie).
+        // 3. Per-slice side faces (darker shade for 3D depth).
+        for (int i = 0; i < slices.Count; i++)
+        {
+            var slice = slices[i];
+            double start = NormalizeAngle(slice.StartAngleDeg + offset);
+            AddPieSliceSideToCanvas(PieChartCanvas, cx, cy, rx, ry, depth, start, slice.SweepDeg, slice.Color);
+        }
+
+        // 4. Front slices (top of pie) with white separators. Draw slices first, then labels on top (ZIndex 2).
+        bool hasSelection = selectedSliceIndex is >= 0 && selectedSliceIndex.Value < slices.Count;
+        for (int i = 0; i < slices.Count; i++)
+        {
+            var slice = slices[i];
+            double start = NormalizeAngle(slice.StartAngleDeg + offset);
+            var path = AddPieSliceToCanvas(PieChartCanvas, cx, cy, rx, ry, start, slice.SweepDeg, slice.Color, slice.Tooltip);
+            _pieSlicePaths.Add(path);
+
+            int index = i;
+            path.PointerEntered += (_, _) => HighlightSlice(index, true);
+            path.PointerExited += (_, _) => HighlightSlice(index, false);
+            path.Tapped += (_, _) =>
+            {
+                if (PartitionList != null && index >= 0 && index < _partitionEntries.Count)
+                {
+                    PartitionList.SelectedIndex = index;
+                }
+            };
+
+            if (hasSelection && i == selectedSliceIndex!.Value)
+            {
+                path.RenderTransform = new TransformGroup
+                {
+                    Children =
+                    {
+                        new ScaleTransform { CenterX = cx, CenterY = cy, ScaleX = 1.08, ScaleY = 1.08 },
+                        new TranslateTransform { Y = 6 }
+                    }
+                };
+                Canvas.SetZIndex(path, 1);
+            }
+            else
+            {
+                Canvas.SetZIndex(path, 0);
+            }
+        }
         foreach (var slice in slices)
         {
-            var path = AddPieSliceToCanvas(PieChartCanvas, cx, cy, rx, ry, slice.StartAngleDeg, slice.SweepDeg, slice.Color, slice.Tooltip);
-            _pieSlicePaths.Add(path);
-            // Annotate on the chart for slices big enough to read (≥ 20°).
+            double start = NormalizeAngle(slice.StartAngleDeg + offset);
             if (slice.SweepDeg >= 20.0)
             {
-                AddSliceLabelToCanvas(PieChartCanvas, cx, cy, rx, ry, slice.StartAngleDeg, slice.SweepDeg, slice.Label);
+                AddSliceLabelToCanvas(PieChartCanvas, cx, cy, rx, ry, start, slice.SweepDeg, slice.Label);
             }
         }
     }
 
-    private void HighlightSlice(int index, bool highlight)
+    private static double NormalizeAngle(double deg)
     {
-        if (index < 0 || index >= _pieSlicePaths.Count) return;
-        var path = _pieSlicePaths[index];
-        path.StrokeThickness = highlight ? 3 : 1;
-        path.Stroke = highlight ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 0, 0));
+        double d = deg % 360.0;
+        return d < 0 ? d + 360.0 : d;
     }
 
-    private void PartitionRow_PointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    private void HighlightSlice(int index, bool highlight)
     {
-        if (sender is not FrameworkElement fe || fe.DataContext is not PartitionListEntry entry) return;
+        if (index < 0 || index >= _pieSlicePaths.Count)
+        {
+            return;
+        }
+
+        var path = _pieSlicePaths[index];
+        path.StrokeThickness = highlight ? 2.5 : 1;
+        path.Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255));
+    }
+
+    private void PartitionRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not PartitionListEntry entry)
+        {
+            return;
+        }
+
         int index = _partitionEntries.IndexOf(entry);
         HighlightSlice(index, true);
     }
 
-    private void PartitionRow_PointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    private void PartitionRow_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is not FrameworkElement fe || fe.DataContext is not PartitionListEntry entry) return;
+        if (sender is not FrameworkElement fe || fe.DataContext is not PartitionListEntry entry)
+        {
+            return;
+        }
+
         int index = _partitionEntries.IndexOf(entry);
         HighlightSlice(index, false);
     }
@@ -308,12 +379,72 @@ public sealed partial class PartitionManagementWindow : Window
             Foreground = new SolidColorBrush(Colors.White),
             TextAlignment = TextAlignment.Center,
             MaxWidth = 90,
-            TextWrapping = TextWrapping.Wrap
+            TextWrapping = TextWrapping.Wrap,
+            IsHitTestVisible = false
         };
-        // Center the text block on (x,y); use fixed offset since we don't have measured size yet.
         Canvas.SetLeft(tb, x - 45);
         Canvas.SetTop(tb, y - 10);
+        Canvas.SetZIndex(tb, 2);
         canvas.Children.Add(tb);
+    }
+
+    /// <summary>Draws the curved side face of a slice (connects top arc to base) for 3D depth. Uses a darker shade of the slice color.</summary>
+    private static void AddPieSliceSideToCanvas(Canvas canvas, double cx, double cy, double rx, double ry, double depth, double startAngleDeg, double sweepDeg, Windows.UI.Color color)
+    {
+        if (sweepDeg <= 0)
+        {
+            return;
+        }
+
+        double startRad = startAngleDeg * Math.PI / 180.0;
+        double endRad = (startAngleDeg + sweepDeg) * Math.PI / 180.0;
+        double x1 = cx + rx * Math.Cos(startRad);
+        double y1 = cy + ry * Math.Sin(startRad);
+        double x2 = cx + rx * Math.Cos(endRad);
+        double y2 = cy + ry * Math.Sin(endRad);
+        double bx1 = cx + rx * Math.Cos(startRad);
+        double by1 = cy + depth + ry * Math.Sin(startRad);
+        double bx2 = cx + rx * Math.Cos(endRad);
+        double by2 = cy + depth + ry * Math.Sin(endRad);
+
+        var sideColor = Windows.UI.Color.FromArgb(255,
+            (byte)(color.R * 0.55),
+            (byte)(color.G * 0.55),
+            (byte)(color.B * 0.55));
+
+        var figure = new PathFigure
+        {
+            StartPoint = new Windows.Foundation.Point(x1, y1),
+            IsClosed = true
+        };
+        figure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(bx1, by1) });
+        figure.Segments.Add(new ArcSegment
+        {
+            Point = new Windows.Foundation.Point(bx2, by2),
+            Size = new Windows.Foundation.Size(rx, ry),
+            IsLargeArc = sweepDeg > 180,
+            SweepDirection = SweepDirection.Clockwise
+        });
+        figure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(x2, y2) });
+        figure.Segments.Add(new ArcSegment
+        {
+            Point = new Windows.Foundation.Point(x1, y1),
+            Size = new Windows.Foundation.Size(rx, ry),
+            IsLargeArc = sweepDeg > 180,
+            SweepDirection = SweepDirection.Counterclockwise
+        });
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        var path = new Microsoft.UI.Xaml.Shapes.Path
+        {
+            Data = geometry,
+            Fill = new SolidColorBrush(sideColor),
+            Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(80, 0, 0, 0)),
+            StrokeThickness = 0.5
+        };
+        Canvas.SetLeft(path, 0);
+        Canvas.SetTop(path, 0);
+        canvas.Children.Add(path);
     }
 
     /// <summary>Draws the base ellipse (bottom of 3D pie) in a dark shade.</summary>
@@ -333,12 +464,18 @@ public sealed partial class PartitionManagementWindow : Window
         canvas.Children.Add(ellipse);
     }
 
-    /// <summary>Draws the back rim (rear half arc) so the top slices appear in front.</summary>
-    private static void AddPieBackRimToCanvas(Canvas canvas, double cx, double cy, double rx, double ry)
+    /// <summary>Draws the back rim (rear half arc) so the top slices appear in front. Rotates with the pie when offset is non-zero.</summary>
+    private static void AddPieBackRimToCanvas(Canvas canvas, double cx, double cy, double rx, double ry, double angleOffsetDeg = 0)
     {
-        // Back half: from 180° to 360° (left side of ellipse when viewed from above).
-        const double startAngleDeg = 180.0;
+        // Back half: from 180° to 360°, rotated by offset.
+        double startAngleDeg = 180.0 + angleOffsetDeg;
         const double sweepDeg = 180.0;
+        startAngleDeg = startAngleDeg % 360.0;
+        if (startAngleDeg < 0)
+        {
+            startAngleDeg += 360.0;
+        }
+
         double startRad = startAngleDeg * Math.PI / 180.0;
         double endRad = (startAngleDeg + sweepDeg) * Math.PI / 180.0;
         double x1 = cx + rx * Math.Cos(startRad);
@@ -416,7 +553,7 @@ public sealed partial class PartitionManagementWindow : Window
                     RadiusY = ry
                 },
                 Fill = new SolidColorBrush(color),
-                Stroke = new SolidColorBrush(Colors.Black),
+                Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)),
                 StrokeThickness = 1
             };
         }
@@ -448,7 +585,7 @@ public sealed partial class PartitionManagementWindow : Window
             {
                 Data = geometry,
                 Fill = new SolidColorBrush(color),
-                Stroke = new SolidColorBrush(Colors.Black),
+                Stroke = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)),
                 StrokeThickness = 1
             };
         }
@@ -476,6 +613,12 @@ public sealed partial class PartitionManagementWindow : Window
     private void PartitionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateButtonStates(PartitionList.SelectedItem as PartitionListEntry);
+        // Rotate pie so selected slice faces the user.
+        if (DiskCombo.SelectedItem is DiskInfo disk)
+        {
+            int idx = PartitionList.SelectedIndex;
+            _ = BuildPieChartAsync(disk, idx >= 0 ? idx : null);
+        }
     }
 
     private void UpdateButtonStates(PartitionListEntry? entry)
@@ -539,14 +682,14 @@ public sealed partial class PartitionManagementWindow : Window
             return;
         }
 
-        uint sizeMB = 0;
-        if (!string.IsNullOrWhiteSpace(sizeBox.Text) && !uint.TryParse(sizeBox.Text.Trim(), out sizeMB))
+        uint sizeMb = 0;
+        if (!string.IsNullOrWhiteSpace(sizeBox.Text) && !uint.TryParse(sizeBox.Text.Trim(), out sizeMb))
         {
-            sizeMB = 0;
+            sizeMb = 0;
         }
 
         HideStatus();
-        bool ok = DriveService.CreatePartition(entry.DiskIndex, sizeMB);
+        bool ok = DriveService.CreatePartition(entry.DiskIndex, sizeMb);
         if (ok)
         {
             ShowStatus("Partition created. Refreshing.");
@@ -670,15 +813,7 @@ public sealed partial class PartitionManagementWindow : Window
 
         string newLetter = (combo.SelectedItem as string) ?? available[0];
         newLetter = newLetter.TrimEnd(':');
-        bool ok;
-        if (string.IsNullOrEmpty(part.DriveLetter))
-        {
-            ok = DriveService.AssignLetterToPartition(entry.DiskIndex, part.PartitionIndex, newLetter);
-        }
-        else
-        {
-            ok = DriveService.TryAssignDriveLetter(currentLetter, newLetter);
-        }
+        var ok = string.IsNullOrEmpty(part.DriveLetter) ? DriveService.AssignLetterToPartition(entry.DiskIndex, part.PartitionIndex, newLetter) : DriveService.TryAssignDriveLetter(currentLetter, newLetter);
 
         HideStatus();
         if (ok)
@@ -701,7 +836,11 @@ public sealed partial class PartitionManagementWindow : Window
         }
 
         int? volNum = DriveService.GetVolumeNumberForDriveLetter(entry.Partition.DriveLetter);
-        if (volNum == null) { ShowStatus("Could not get volume. Run the app as administrator for Extend/Shrink.", true); return; }
+        if (volNum == null)
+        {
+            ShowStatus("Could not get volume. Run the app as administrator for Extend/Shrink.", true);
+            return;
+        }
         var sizeBox = new TextBox { PlaceholderText = "0 = use all", Width = 200 };
         sizeBox.InputScope = new InputScope();
         sizeBox.InputScope.Names.Add(new InputScopeName(InputScopeNameValue.Number));
@@ -721,14 +860,14 @@ public sealed partial class PartitionManagementWindow : Window
             return;
         }
 
-        uint? sizeMB = null;
+        uint? sizeMb = null;
         if (!string.IsNullOrWhiteSpace(sizeBox.Text) && uint.TryParse(sizeBox.Text.Trim(), out uint s))
         {
-            sizeMB = s;
+            sizeMb = s;
         }
 
         HideStatus();
-        bool ok = DriveService.ExtendVolume(volNum.Value, sizeMB);
+        bool ok = DriveService.ExtendVolume(volNum.Value, sizeMb);
         if (ok)
         {
             ShowStatus("Volume extended. Refreshing.");

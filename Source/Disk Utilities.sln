@@ -10,6 +10,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DiskSeer", "DiskSeer\DiskSe
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HandleFinder", "HandleFinder\HandleFinder.csproj", "{D4E5F6A7-B8C9-0123-DEF0-345678901234}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DriveStat", "DriveStat\DriveStat.csproj", "{E5F6A7B8-C9D0-1234-EF01-456789012345}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64
@@ -68,6 +70,18 @@ Global
 		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|x64.Build.0 = Release|x64
 		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|x86.ActiveCfg = Release|x86
 		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|x86.Build.0 = Release|x86
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Debug|ARM64.Build.0 = Debug|ARM64
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Debug|x64.ActiveCfg = Debug|x64
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Debug|x64.Build.0 = Debug|x64
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Debug|x86.ActiveCfg = Debug|x86
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Debug|x86.Build.0 = Debug|x86
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Release|ARM64.ActiveCfg = Release|ARM64
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Release|ARM64.Build.0 = Release|ARM64
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Release|x64.ActiveCfg = Release|x64
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Release|x64.Build.0 = Release|x64
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Release|x86.ActiveCfg = Release|x86
+		{E5F6A7B8-C9D0-1234-EF01-456789012345}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

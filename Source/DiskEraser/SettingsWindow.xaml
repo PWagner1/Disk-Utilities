@@ -23,6 +23,8 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -34,7 +36,7 @@
         </StackPanel>
 
         <TextBlock Grid.Row="2" Text="Diagram colours" FontWeight="SemiBold" FontSize="14" />
-        <TextBlock Grid.Row="3" Text="Choose colours for the drive layout diagram. Changes apply when you save." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
+        <TextBlock Grid.Row="3" Text="Choose colours for the drive layout diagram and pie chart. Changes apply when you save." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
 
         <StackPanel Grid.Row="4" Spacing="6">
             <TextBlock Text="Formattable partitions" FontWeight="SemiBold" />
@@ -57,8 +59,15 @@
                 <Border x:Name="NoLetterColourPreview" Width="40" Height="28" CornerRadius="4" BorderBrush="Gray" BorderThickness="1" />
             </StackPanel>
         </StackPanel>
+        <StackPanel Grid.Row="7" Spacing="6">
+            <TextBlock Text="Unallocated space" FontWeight="SemiBold" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <ComboBox x:Name="UnallocatedColourCombo" Width="180" SelectionChanged="ColourCombo_SelectionChanged" />
+                <Border x:Name="UnallocatedColourPreview" Width="40" Height="28" CornerRadius="4" BorderBrush="Gray" BorderThickness="1" />
+            </StackPanel>
+        </StackPanel>
 
-        <StackPanel Grid.Row="7" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="8" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
             <Button x:Name="SaveButton" Content="Save" Click="SaveButton_Click" />
             <Button x:Name="CancelButton" Content="Cancel" Click="CancelButton_Click" />
         </StackPanel>

@@ -554,7 +554,7 @@ public static class DriveService
     public static bool ExtendVolume(int volumeNumber, uint? sizeMb)
     {
         var commands = new List<string> { $"select volume {volumeNumber}" };
-        if (sizeMb.HasValue && sizeMb.Value > 0)
+        if (sizeMb is > 0)
         {
             commands.Add($"extend size={sizeMb}");
         }
