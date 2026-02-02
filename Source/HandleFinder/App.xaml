@@ -1,0 +1,23 @@
+<Application
+    x:Class="HandleFinder.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:media="using:Microsoft.UI.Xaml.Media">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <media:AcrylicBrush x:Key="FlyoutAcrylicBrush"
+                                 TintColor="#2B2B2B"
+                                 TintOpacity="0.9"
+                                 FallbackColor="#2B2B2B" />
+
+            <Style TargetType="controls:FlyoutPresenter">
+                <Setter Property="Background" Value="{StaticResource FlyoutAcrylicBrush}" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -1,10 +1,11 @@
 # Disk Utilities – Source
 
-This folder contains three WinUI 3 desktop applications for disk management:
+This folder contains four WinUI 3 desktop applications for disk management:
 
 - **DiskEraser** – Format drives with secure deletion options
 - **DiskHealth** – Recover deleted files from drives
 - **DiskSeer** – Read and modify drives formatted with Apple or Linux file systems
+- **HandleFinder** – Find processes locking files, folders, or drives
 
 ## Structure
 
@@ -24,12 +25,18 @@ This folder contains three WinUI 3 desktop applications for disk management:
   - **Models/** – ForeignDriveInfo, ForeignPartitionInfo, FileSystemEntry, BreadcrumbItem
   - **Services/ForeignDriveService.cs** – Detection and access to Apple/Linux file systems via DiscUtils
 
+- **HandleFinder/** – WinUI 3 project for finding file locks
+  - **MainWindow.xaml** – Path input, drive selector, results list, end process
+  - **Models/** – HandleInfo, DriveItem
+  - **Services/HandleService.cs** – Handle enumeration via NtQuerySystemInformation
+  - **README.md** – Comprehensive documentation
+
 ## Requirements
 
 - Windows 10 19041+ or Windows 11
 - .NET 8 SDK
 - Visual Studio 2022 with **Windows application development** (WinUI) workload, or build from command line with `dotnet build`
-- **Administrator rights** – Required for DiskSeer to access raw disk partitions
+- **Administrator rights** – Required for DiskSeer (raw disk access) and HandleFinder (handle enumeration)
 
 ## Build and run
 
@@ -43,6 +50,8 @@ dotnet run --project DiskEraser -p:Platform=x64
 dotnet run --project DiskHealth -p:Platform=x64
 # or
 dotnet run --project DiskSeer -p:Platform=x64
+# or
+dotnet run --project HandleFinder -p:Platform=x64
 ```
 
 Or open `Source/Disk Utilities.sln` in Visual Studio and press F5.
@@ -80,6 +89,16 @@ DiskSeer uses the [DiscUtils](https://github.com/DiscUtils/DiscUtils) library to
 - **Drive enumeration**: When you refresh drives, each physical disk is scanned on a separate thread-pool thread (parallelism capped by core count, max 8) so multiple drives are detected concurrently.
 - **Batch file copy**: Copying multiple files to or from a foreign drive runs up to 2 copy operations concurrently (configurable) to use multiple cores without overwhelming a single disk.
 - **UI**: Long-running work (drive scan, directory load, copy) runs on background threads; progress and results are marshalled to the UI thread so the window stays responsive.
+
+## HandleFinder – File Lock Discovery
+
+HandleFinder identifies which processes have open handles (file locks) on a given file, folder, or drive. It helps resolve "Access Denied" and "File in Use" errors.
+
+- **Drive support**: Search entire volumes (e.g., `C:\`)
+- **Path types**: Files, folders, or drives
+- **End process**: Optionally terminate the locking process (with confirmation)
+
+See **HandleFinder/README.md** for full documentation, API reference, and troubleshooting.
 
 ## File systems (DiskEraser)
 

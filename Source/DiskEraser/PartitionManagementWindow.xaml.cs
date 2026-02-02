@@ -9,6 +9,7 @@ public sealed partial class PartitionManagementWindow : Window
     private IReadOnlyList<DiskInfo> _disks = [];
     private readonly ObservableCollection<PartitionListEntry> _partitionEntries = [];
     private readonly List<Microsoft.UI.Xaml.Shapes.Path> _pieSlicePaths = [];
+    private readonly WindowUtilities _windowUtilities;
 
     public PartitionManagementWindow()
     {
@@ -21,6 +22,8 @@ public sealed partial class PartitionManagementWindow : Window
         App.DiagramColoursChanged += OnDiagramColoursChanged;
         Closed += (_, _) => App.DiagramColoursChanged -= OnDiagramColoursChanged;
         _ = LoadDisksAsync();
+
+        _windowUtilities.TryDisableMaximizeBox();
     }
 
     private void OnDiagramColoursChanged(object? sender, EventArgs e)

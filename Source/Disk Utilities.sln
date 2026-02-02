@@ -8,6 +8,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DiskHealth", "DiskHealth\Di
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DiskSeer", "DiskSeer\DiskSeer.csproj", "{C3D4E5F6-A7B8-9012-CDEF-234567890123}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HandleFinder", "HandleFinder\HandleFinder.csproj", "{D4E5F6A7-B8C9-0123-DEF0-345678901234}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64
@@ -54,6 +56,18 @@ Global
 		{C3D4E5F6-A7B8-9012-CDEF-234567890123}.Release|x64.Build.0 = Release|x64
 		{C3D4E5F6-A7B8-9012-CDEF-234567890123}.Release|x86.ActiveCfg = Release|x86
 		{C3D4E5F6-A7B8-9012-CDEF-234567890123}.Release|x86.Build.0 = Release|x86
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Debug|ARM64.Build.0 = Debug|ARM64
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Debug|x64.ActiveCfg = Debug|x64
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Debug|x64.Build.0 = Debug|x64
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Debug|x86.ActiveCfg = Debug|x86
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Debug|x86.Build.0 = Debug|x86
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|ARM64.ActiveCfg = Release|ARM64
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|ARM64.Build.0 = Release|ARM64
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|x64.ActiveCfg = Release|x64
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|x64.Build.0 = Release|x64
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|x86.ActiveCfg = Release|x86
+		{D4E5F6A7-B8C9-0123-DEF0-345678901234}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

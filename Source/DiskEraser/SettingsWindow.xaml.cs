@@ -6,6 +6,7 @@ namespace DiskEraser;
 public sealed partial class SettingsWindow : Window
 {
     private readonly Action? _onSaved;
+    private readonly WindowUtilities _windowUtilities;
 
     /// <param name="onSaved">Optional callback invoked when Save is clicked (e.g. to refresh the diagram).</param>
     public SettingsWindow(Action? onSaved = null)
@@ -15,13 +16,17 @@ public sealed partial class SettingsWindow : Window
         InitializeComponent();
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
-        TrySetWindowSize(400, 520);
+        TrySetWindowSize(400, 577);
         LoadThemeOptions();
         LoadCurrentTheme();
         LoadColourPresets();
         LoadCurrentColours();
         UpdateColourPreviews();
         App.ApplyTheme(this);
+
+        // Replaced the non-existent `MaximizeBox` property with a Win32-based attempt
+        // to remove the maximize button from the window frame on Windows.
+        _windowUtilities?.TryDisableMaximizeBox();
     }
 
     private void LoadThemeOptions()
@@ -194,4 +199,6 @@ public sealed partial class SettingsWindow : Window
         }
         catch { /* ignore */ }
     }
+
+    // Win32 interop for modifying window styles
 }

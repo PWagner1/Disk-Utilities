@@ -4,6 +4,7 @@ global using System.Collections.ObjectModel;
 global using System.Diagnostics;
 global using System.Linq;
 global using System.Management;
+global using System.Runtime.InteropServices;
 global using System.Security.Cryptography;
 global using Windows.Storage;
 global using DiskEraser.Models;
