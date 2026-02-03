@@ -182,6 +182,8 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void ReloadButton_Click(object sender, RoutedEventArgs e) => FindButton_Click(sender, e);
+
     private void HandlesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         var hasSelection = HandlesList.SelectedItem != null;

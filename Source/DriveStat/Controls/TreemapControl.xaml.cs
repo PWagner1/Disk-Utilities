@@ -219,6 +219,10 @@ public sealed partial class TreemapControl : UserControl
                 {
                     SelectedNode = n;
                     SelectionChanged?.Invoke(this, n);
+                    if (n.IsDirectory && n.Children.Count > 0)
+                    {
+                        Root = n;
+                    }
                 }
             };
 

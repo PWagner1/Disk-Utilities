@@ -44,7 +44,9 @@ When Windows reports that a file or folder cannot be deleted, renamed, or moved 
 | **Browse** | Browse for a file or folder via the picker |
 | **Close handle** | Close the selected handle without terminating the process |
 | **End process** | Terminate the selected process (with confirmation) |
-| **Process details** | Process name, PID, handle type, and full path |
+| **Process details** | Process name, PID, handle type, and full path; expand rows for handle value and access rights |
+| **Reload** | Re-scan the current path without re-entering it |
+| **CLI** | Command-line interface for automation and build scripts |
 | **Cross-version** | Automatic fallback for different Windows ObjectTypeIndex values |
 
 ---
@@ -86,6 +88,36 @@ Run the executable:
 
 ---
 
+## Command-Line Reference
+
+HandleFinder can run from the command line for automation and build scripts (inspired by [File Locksmith](https://learn.microsoft.com/en-gb/windows/powertoys/file-locksmith)):
+
+| Command | Description |
+|---------|--------------|
+| `<path>` | **Required**. One or more file or directory paths to check. Multiple paths separated by spaces. |
+| `--kill`, `-k` | Terminate all processes locking the specified files. |
+| `--json`, `-j` | Output results in JSON format for parsing and automation. |
+| `--wait`, `-w` | Block until the specified files are released. Useful in build scripts. |
+| `--help`, `-h` | Display help and usage. |
+
+**Examples:**
+
+```powershell
+# Check which processes are locking a file
+HandleFinder.exe "C:\Users\Docs\report.docx"
+
+# Multiple files, JSON output
+HandleFinder.exe --json "C:\File1.txt" "C:\Folder\File2.dll"
+
+# Block until file is released (e.g. in build scripts)
+HandleFinder.exe --wait "C:\bin\output.exe"
+
+# Kill all processes locking a file
+HandleFinder.exe --kill "C:\LockedFile.dat"
+```
+
+---
+
 ## Usage Guide
 
 ### Step 1: Specify the Path
@@ -116,6 +148,8 @@ The results list shows:
 | **Process** | Name of the process (e.g., `explorer.exe`) |
 | **PID** | Process ID |
 | **Path** | Full path of the handle (hover for full text if truncated) |
+
+Expand a row to see handle value, access rights, and full path. Use **Reload** to re-scan after closing handles or ending processes.
 
 ### Step 4: Close Handle or End Process (Optional)
 
@@ -301,6 +335,7 @@ Attempts to terminate a process by ID.
 
 ## Related Tools
 
+- [File Locksmith](https://learn.microsoft.com/en-gb/windows/powertoys/file-locksmith) — PowerToys shell extension; right-click files in Explorer to see locking processes.
 - [Sysinternals Handle](https://learn.microsoft.com/en-us/sysinternals/downloads/handle) — Command-line tool; can close handles.
 - [Unlocker](http://www.emptyloop.com/unlocker/) — Uses a kernel driver to close handles.
 - [Process Explorer](https://learn.microsoft.com/en-us/sysinternals/downloads/process-explorer) — Shows handles per process.

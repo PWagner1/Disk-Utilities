@@ -36,6 +36,7 @@
                               SelectionChanged="DriveCombo_SelectionChanged" />
                     <Button x:Name="BrowseButton" Content="Browse..." Click="BrowseButton_Click" />
                     <Button x:Name="ScanButton" Content="Scan" Click="ScanButton_Click" />
+                    <Button x:Name="HeatMapButton" Content="Heat map" Click="HeatMapButton_Click" IsEnabled="False" ToolTipService.ToolTip="Open heat map in new window (scan first)" />
                     <Button x:Name="CancelButton" Content="Cancel" Click="CancelButton_Click" Visibility="Collapsed" />
                 </StackPanel>
                 <ProgressBar x:Name="ProgressBar" IsIndeterminate="True" Visibility="Collapsed" />
@@ -85,7 +86,9 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                            <Button x:Name="TreemapBackButton" Content="↑ Up" Click="TreemapBackButton_Click" Visibility="Collapsed" ToolTipService.ToolTip="Go to parent folder" />
                             <TextBlock Text="Treemap" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Text="(click a folder to expand)" VerticalAlignment="Center" Opacity="0.7" FontSize="11" />
                             <Button x:Name="ZoomOutButton" Content="-" Width="28" Height="28" Padding="0" Click="ZoomOutButton_Click" ToolTipService.ToolTip="Zoom out" />
                             <Button x:Name="ZoomInButton" Content="+" Width="28" Height="28" Padding="0" Click="ZoomInButton_Click" ToolTipService.ToolTip="Zoom in" />
                             <TextBlock x:Name="ZoomLabel" Text="100%" VerticalAlignment="Center" MinWidth="40" />

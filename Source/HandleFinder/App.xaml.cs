@@ -10,8 +10,16 @@ public partial class App : Application
         InitializeComponent();
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var cmdArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
+        if (cmdArgs.Length > 0)
+        {
+            var exitCode = await CliRunner.RunAsync(cmdArgs);
+            Environment.Exit(exitCode);
+            return;
+        }
+
         _mainWindow = new MainWindow();
         ApplyMicaBackdrop(_mainWindow);
         _mainWindow.Activate();

@@ -15,8 +15,14 @@
             <TextBlock x:Name="TitleText" Text="Properties" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
         </Grid>
 
-        <TabView Grid.Row="1" Padding="24,0,24,0">
-            <TabViewItem Header="General">
+        <TabView Grid.Row="1" Padding="24,0,24,0" IsAddTabButtonVisible="False">
+            <TabViewItem IsClosable="False">
+                <TabViewItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="📄" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Text="General" VerticalAlignment="Center" />
+                    </StackPanel>
+                </TabViewItem.Header>
         <ScrollViewer Padding="0,12,0,0" VerticalScrollBarVisibility="Auto">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -64,22 +70,46 @@
             </Grid>
         </ScrollViewer>
             </TabViewItem>
-            <TabViewItem Header="Icons">
+            <TabViewItem IsClosable="False">
+                <TabViewItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="🖼️" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Text="Icons" VerticalAlignment="Center" />
+                    </StackPanel>
+                </TabViewItem.Header>
                 <ScrollViewer Padding="0,12,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="IconsPanel" Spacing="16" MaxWidth="500" />
                 </ScrollViewer>
             </TabViewItem>
-            <TabViewItem Header="Details">
+            <TabViewItem IsClosable="False">
+                <TabViewItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="📋" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Text="Details" VerticalAlignment="Center" />
+                    </StackPanel>
+                </TabViewItem.Header>
                 <ScrollViewer Padding="0,12,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="DetailsPanel" Spacing="12" MaxWidth="500" />
                 </ScrollViewer>
             </TabViewItem>
-            <TabViewItem Header="Security">
+            <TabViewItem IsClosable="False">
+                <TabViewItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="🔒" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Text="Security" VerticalAlignment="Center" />
+                    </StackPanel>
+                </TabViewItem.Header>
                 <ScrollViewer Padding="0,12,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="SecurityPanel" Spacing="12" MaxWidth="500" />
                 </ScrollViewer>
             </TabViewItem>
-            <TabViewItem Header="Digital Signatures">
+            <TabViewItem IsClosable="False">
+                <TabViewItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="📜" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Text="Digital Signatures" VerticalAlignment="Center" />
+                    </StackPanel>
+                </TabViewItem.Header>
                 <ScrollViewer Padding="0,12,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="SignaturesPanel" Spacing="12" MaxWidth="500" />
                 </ScrollViewer>

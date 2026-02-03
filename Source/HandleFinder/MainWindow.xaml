@@ -60,6 +60,7 @@
                     </Grid.RowDefinitions>
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                         <TextBlock Text="Processes locking this path" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button x:Name="ReloadButton" Content="Reload" Click="ReloadButton_Click" ToolTipService.ToolTip="Re-scan the current path" />
                         <Button x:Name="CloseHandleButton" Content="Close handle" Click="CloseHandleButton_Click" IsEnabled="False" />
                         <Button x:Name="EndProcessButton" Content="End process" Click="EndProcessButton_Click" IsEnabled="False" />
                     </StackPanel>
@@ -83,16 +84,31 @@
                         </ListView.HeaderTemplate>
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="models:HandleInfo">
-                                <Grid Padding="8,4" ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120" />
-                                        <ColumnDefinition Width="80" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{x:Bind ProcessName}" />
-                                    <TextBlock Grid.Column="1" Text="{x:Bind ProcessId}" />
-                                    <TextBlock Grid.Column="2" Text="{x:Bind Path}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Path}" />
-                                </Grid>
+                                <Expander>
+                                    <Expander.Header>
+                                        <Grid Padding="8,4" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="120" />
+                                                <ColumnDefinition Width="80" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{x:Bind ProcessName}" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind ProcessId}" />
+                                            <TextBlock Grid.Column="2" Text="{x:Bind Path}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Path}" />
+                                        </Grid>
+                                    </Expander.Header>
+                                    <StackPanel Padding="8,4" Spacing="4" Opacity="0.9">
+                                        <TextBlock>
+                                            <Run Text="Handle: " FontWeight="SemiBold"/>
+                                            <Run Text="{x:Bind HandleValue, Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <TextBlock>
+                                            <Run Text="Access: " FontWeight="SemiBold"/>
+                                            <Run Text="{x:Bind GrantedAccess, Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <TextBlock Text="{x:Bind Path}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxLines="3"/>
+                                    </StackPanel>
+                                </Expander>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>

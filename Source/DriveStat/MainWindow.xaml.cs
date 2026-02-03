@@ -130,6 +130,8 @@ public sealed partial class MainWindow : Window
             Treemap.ExtensionFilter = null;
             ShowAllButton.Visibility = Visibility.Collapsed;
 
+            HeatMapButton.IsEnabled = true;
+            UpdateTreemapBackButtonVisibility();
             StatusText.Text = $"Scan complete: {DirectoryNode.FormatSize(_root.Size)} in {_extensions.Sum(x => x.FileCount):N0} files.";
         }
         catch (OperationCanceledException)
@@ -144,6 +146,17 @@ public sealed partial class MainWindow : Window
         {
             SetScanning(false);
         }
+    }
+
+    private void HeatMapButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_root == null)
+        {
+            StatusText.Text = "Scan a drive or folder first.";
+            return;
+        }
+        var heatMapWindow = new HeatMapWindow(_root);
+        heatMapWindow.Activate();
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
@@ -215,6 +228,7 @@ public sealed partial class MainWindow : Window
             Treemap.Root = dn;
             Treemap.ExtensionColors = _extensionColorMap;
         }
+        UpdateTreemapBackButtonVisibility();
     }
 
     private void ZoomInButton_Click(object sender, RoutedEventArgs e)
@@ -302,6 +316,32 @@ public sealed partial class MainWindow : Window
         {
             SelectTreeNode(DirectoryTree.RootNodes, node);
         }
+        UpdateTreemapBackButtonVisibility();
+    }
+
+    private void TreemapBackButton_Click(object sender, RoutedEventArgs e)
+    {
+        var current = Treemap.Root;
+        if (current?.Parent != null)
+        {
+            Treemap.Root = current.Parent;
+            Treemap.SelectedNode = current.Parent;
+            SelectTreeNode(DirectoryTree.RootNodes, current.Parent);
+        }
+        else if (current != Treemap.TreeRoot && Treemap.TreeRoot != null)
+        {
+            Treemap.Root = Treemap.TreeRoot;
+            Treemap.SelectedNode = Treemap.TreeRoot;
+            SelectTreeNode(DirectoryTree.RootNodes, Treemap.TreeRoot);
+        }
+        UpdateTreemapBackButtonVisibility();
+    }
+
+    private void UpdateTreemapBackButtonVisibility()
+    {
+        var root = Treemap.Root;
+        var treeRoot = Treemap.TreeRoot;
+        TreemapBackButton.Visibility = (root != null && treeRoot != null && root != treeRoot) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static bool SelectTreeNode(IList<TreeViewNode> nodes, DirectoryNode target)
