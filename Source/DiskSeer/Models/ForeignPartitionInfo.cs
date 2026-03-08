@@ -1,3 +1,5 @@
+using DiskSeer.Services.Apfs;
+
 namespace DiskSeer.Models;
 
 /// <summary>
@@ -24,8 +26,12 @@ public class ForeignPartitionInfo
     public string DriveLetter { get; set; } = string.Empty;
 
     /// <summary>True if this partition can be read by DiskSeer.</summary>
-    public bool IsSupported => FileSystemType != ForeignFileSystemType.Unknown &&
-                               FileSystemType != ForeignFileSystemType.APFS; // APFS not yet supported by DiscUtils
+    public bool IsSupported => FileSystemType switch
+    {
+        ForeignFileSystemType.Unknown => false,
+        ForeignFileSystemType.APFS => ApfsFileSystem.IsAvailable,
+        _ => true
+    };
 
     /// <summary>Display text for UI.</summary>
     public string DisplayText

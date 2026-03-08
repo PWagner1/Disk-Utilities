@@ -2,7 +2,7 @@
     x:Class="DriveStat.HeatMapWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Heat Map">
+    Title="3D Heat Map">
 
     <Grid Background="Transparent">
         <Grid.RowDefinitions>
@@ -12,11 +12,11 @@
         </Grid.RowDefinitions>
 
         <Grid x:Name="AppTitleBar" Height="48" Background="Transparent" Padding="24,0,24,0" VerticalAlignment="Top">
-            <TextBlock x:Name="TitleText" Text="Heat Map" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock x:Name="TitleText" Text="3D Heat Map" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
         </Grid>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Padding="24,8,24,8">
-            <TextBlock Text="Color intensity = size (cool = small, hot = large)" VerticalAlignment="Center" Opacity="0.8" FontSize="12" />
+            <TextBlock Text="Color intensity and depth = size (cool/shallow = small, hot/deep = large)" VerticalAlignment="Center" Opacity="0.8" FontSize="12" />
             <Border Width="120" Height="16" CornerRadius="2" HorizontalAlignment="Left">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">

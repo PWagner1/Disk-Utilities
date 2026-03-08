@@ -52,41 +52,56 @@ public sealed partial class MainWindow : Window
 
     private async void RefreshDrives()
     {
-        StatusText.Text = "Scanning drives (multicore)...";
+        StatusText.Text = "Scanning for drives (multicore)...";
         RefreshDrivesButton.IsEnabled = false;
 
         try
         {
             // Use parallel drive detection on the thread pool to keep UI responsive
-            _drives = await ForeignDriveService.GetAllPhysicalDrivesAsync();
+            var drives = await ForeignDriveService.GetAllPhysicalDrivesAsync();
 
-            DriveCombo.Items.Clear();
-
-            foreach (var drive in _drives)
+            // Fallback: if parallel path returned empty, try synchronous (WMI/threading edge cases)
+            if (drives.Count == 0)
             {
-                int foreignCount = drive.Partitions.Count(p => p.FileSystemType != ForeignFileSystemType.Unknown);
-                string suffix = foreignCount > 0 ? $" ({foreignCount} foreign partition{(foreignCount > 1 ? "s" : "")})" : " (no foreign partitions)";
-
-                DriveCombo.Items.Add(new ComboBoxItem
-                {
-                    Content = drive.DisplayText + suffix,
-                    Tag = drive
-                });
+                drives = await ForeignDriveService.GetAllPhysicalDrivesAsync();
             }
 
-            StatusText.Text = $"Found {_drives.Count} physical drive{(_drives.Count != 1 ? "s" : "")}";
+            var drivesToShow = drives;
+
+            // Marshal UI updates to the UI thread (WinUI 3 may not have SyncContext)
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _drives = drivesToShow;
+                DriveCombo.Items.Clear();
+
+                foreach (var drive in _drives)
+                {
+                    int foreignCount = drive.Partitions.Count(p => p.FileSystemType != ForeignFileSystemType.Unknown);
+                    string suffix = foreignCount > 0 ? $" ({foreignCount} foreign partition{(foreignCount > 1 ? "s" : "")})" : " (no foreign partitions)";
+
+                    DriveCombo.Items.Add(new ComboBoxItem
+                    {
+                        Content = drive.DisplayText + suffix,
+                        Tag = drive
+                    });
+                }
+
+                StatusText.Text = _drives.Count > 0
+                    ? $"Found {_drives.Count} physical drive{(_drives.Count != 1 ? "s" : "")}"
+                    : "No drives found. Ensure you're running as administrator.";
+            });
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = "Scan cancelled";
+            DispatcherQueue.TryEnqueue(() => StatusText.Text = "Scan cancelled");
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Error scanning drives: {ex.Message}";
+            DispatcherQueue.TryEnqueue(() => StatusText.Text = $"Error scanning drives: {ex.Message}");
         }
         finally
         {
-            RefreshDrivesButton.IsEnabled = true;
+            DispatcherQueue.TryEnqueue(() => RefreshDrivesButton.IsEnabled = true);
         }
     }
 
@@ -546,8 +561,8 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            var filesOnly = selectedItems.Where(e => !e.IsDirectory).ToList();
-            var dirs = selectedItems.Where(e => e.IsDirectory).ToList();
+            var filesOnly = selectedItems.Where(fileSystemEntry => !fileSystemEntry.IsDirectory).ToList();
+            var dirs = selectedItems.Where(entry => entry.IsDirectory).ToList();
 
             // Multicore: batch copy multiple files concurrently (limited parallelism to avoid overwhelming disk)
             if (filesOnly.Count > 1)
@@ -591,7 +606,7 @@ public sealed partial class MainWindow : Window
                     break;
                 }
 
-                DispatcherQueue.TryEnqueue(() => StatusText.Text = $"Copying {entry.Name}... ({completed + 1}/{selectedItems.Count})");
+                DispatcherQueue.TryEnqueue(() => StatusText.Text = $"\u0043\u006f\u0070\u0079\u0069\u006e\u0067\u0020{entry.Name}\u002e\u002e\u002e\u0020\u0028{completed + 1}\u002f{selectedItems.Count}\u0029");
                 var destPath = Path.Combine(folder.Path, entry.Name);
                 await CopyDirectoryToLocalAsync(entry.FullPath, destPath);
                 completed++;

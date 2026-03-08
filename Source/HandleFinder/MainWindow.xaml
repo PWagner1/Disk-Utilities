@@ -100,11 +100,11 @@
                                     <StackPanel Padding="8,4" Spacing="4" Opacity="0.9">
                                         <TextBlock>
                                             <Run Text="Handle: " FontWeight="SemiBold"/>
-                                            <Run Text="{x:Bind HandleValue, Mode=OneWay}"/>
+                                            <Run Text="{x:Bind HandleValue, Mode=OneTime}"/>
                                         </TextBlock>
                                         <TextBlock>
                                             <Run Text="Access: " FontWeight="SemiBold"/>
-                                            <Run Text="{x:Bind GrantedAccess, Mode=OneWay}"/>
+                                            <Run Text="{x:Bind GrantedAccess, Mode=OneTime}"/>
                                         </TextBlock>
                                         <TextBlock Text="{x:Bind Path}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxLines="3"/>
                                     </StackPanel>

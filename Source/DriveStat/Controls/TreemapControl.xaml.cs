@@ -116,57 +116,169 @@ public sealed partial class TreemapControl : UserControl
 
     private void Render()
     {
-        TreemapCanvas.Children.Clear();
-        if (_root == null || _root.Size <= 0)
+        try
         {
-            return;
+            TreemapCanvas.Children.Clear();
+            if (_root == null || _root.Size <= 0)
+            {
+                return;
+            }
+
+            double w = ActualWidth;
+            double h = ActualHeight;
+            if (w <= 0 || h <= 0)
+            {
+                return;
+            }
+
+            var items = GetFilteredChildren();
+            if (items.Count == 0)
+            {
+                return;
+            }
+
+        // Calculate min/max sizes for height normalization
+        long minSize = items.Min(i => i.Size);
+        long maxSize = items.Max(i => i.Size);
+        if (maxSize <= minSize)
+        {
+            maxSize = minSize + 1;
         }
 
-        double w = ActualWidth;
-        double h = ActualHeight;
-        if (w <= 0 || h <= 0)
-        {
-            return;
-        }
+        // Add extra space for 3D effects
+        TreemapCanvas.Width = w + 100;
+        TreemapCanvas.Height = h + 100;
 
-        var items = GetFilteredChildren();
         var rects = Squarify(items, 0, 0, w, h);
+        
+        // Isometric projection: 30-degree rotation, scale factors
+        double isoAngle = 30.0 * Math.PI / 180.0;
+        double isoCos = Math.Cos(isoAngle); // ~0.866
+        double isoSin = Math.Sin(isoAngle); // 0.5
+        
         foreach (var (node, rect) in rects)
         {
-            var blockWidth = Math.Max(0, rect.Width - RectPadding * 2);
-            var blockHeight = Math.Max(0, rect.Height - RectPadding * 2);
-            var color = GetColor(node);
-            var brush = new SolidColorBrush(color);
-            var border = new SolidColorBrush(Colors.Black) { Opacity = 0.2 };
-
-            var container = new Grid
+            var baseWidth = Math.Max(0, rect.Width - RectPadding * 2);
+            var baseDepth = Math.Max(0, rect.Height - RectPadding * 2);
+            
+            // Skip blocks that are too small to render
+            if (baseWidth < 2 || baseDepth < 2)
             {
-                Width = blockWidth,
-                Height = blockHeight,
-                Tag = node,
-                Background = brush
+                continue;
+            }
+            
+            var color = GetColor(node);
+
+            // Calculate height based on size (normalized 0-1, then scaled)
+            double heightNormalized = maxSize > minSize 
+                ? (double)(node.Size - minSize) / (maxSize - minSize) 
+                : 0.5;
+            double boxHeight = 10 + heightNormalized * 80; // Height ranges from 10 to 90 pixels
+
+            // Base position
+            double baseX = rect.X + RectPadding + 50;
+            double baseY = rect.Y + RectPadding + 50;
+            
+            // Create container for the 3D box
+            var container = new Canvas
+            {
+                Tag = node
             };
 
-            var rectShape = new Microsoft.UI.Xaml.Shapes.Rectangle
+            // Create darker shades for side faces (simulate lighting)
+            var frontColor = Windows.UI.Color.FromArgb(255, 
+                (byte)Math.Max(0, color.R - 35), 
+                (byte)Math.Max(0, color.G - 35), 
+                (byte)Math.Max(0, color.B - 35));
+            var rightColor = Windows.UI.Color.FromArgb(255, 
+                (byte)Math.Max(0, color.R - 55), 
+                (byte)Math.Max(0, color.G - 55), 
+                (byte)Math.Max(0, color.B - 55));
+
+            // Calculate isometric offsets
+            double isoOffsetX = boxHeight * isoSin; // Horizontal offset for depth
+            double isoOffsetY = boxHeight * isoCos; // Vertical offset for height
+            
+            // Validate calculations to prevent NaN/Infinity
+            if (double.IsNaN(baseX) || double.IsNaN(baseY) || double.IsNaN(isoOffsetX) || double.IsNaN(isoOffsetY) ||
+                double.IsInfinity(baseX) || double.IsInfinity(baseY) || double.IsInfinity(isoOffsetX) || double.IsInfinity(isoOffsetY))
             {
-                Width = blockWidth,
-                Height = blockHeight,
-                Fill = brush,
-                Stroke = border,
+                continue;
+            }
+
+            // Draw front face (vertical rectangle facing viewer)
+            var frontFace = new Microsoft.UI.Xaml.Shapes.Rectangle
+            {
+                Width = baseWidth,
+                Height = boxHeight,
+                Fill = new SolidColorBrush(frontColor),
+                Stroke = new SolidColorBrush(Colors.Black) { Opacity = 0.15 },
                 StrokeThickness = 0.5
             };
-            container.Children.Add(rectShape);
+            Canvas.SetLeft(frontFace, baseX);
+            Canvas.SetTop(frontFace, baseY + baseDepth - isoOffsetY);
+            container.Children.Add(frontFace);
 
-            var showLabel = blockWidth >= MinLabelSize && blockHeight >= MinLabelSize;
+            // Draw right side face (vertical parallelogram, right side)
+            var rightFacePath = new Microsoft.UI.Xaml.Shapes.Path
+            {
+                Fill = new SolidColorBrush(rightColor),
+                Stroke = new SolidColorBrush(Colors.Black) { Opacity = 0.15 },
+                StrokeThickness = 0.5
+            };
+            var rightFaceGeometry = new PathGeometry();
+            var rightFaceFigure = new PathFigure
+            {
+                StartPoint = new Windows.Foundation.Point(baseX + baseWidth, baseY + baseDepth - isoOffsetY),
+                IsClosed = true
+            };
+            rightFaceFigure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(baseX + baseWidth + isoOffsetX, baseY + baseDepth - isoOffsetY - isoOffsetY) });
+            rightFaceFigure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(baseX + baseWidth + isoOffsetX, baseY + baseDepth - isoOffsetY - isoOffsetY + boxHeight) });
+            rightFaceFigure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(baseX + baseWidth, baseY + baseDepth - isoOffsetY + boxHeight) });
+            rightFaceGeometry.Figures.Add(rightFaceFigure);
+            rightFacePath.Data = rightFaceGeometry;
+            container.Children.Add(rightFacePath);
+
+            // Draw top face (horizontal parallelogram, visible top)
+            var lighterColor = Windows.UI.Color.FromArgb(255, 
+                (byte)Math.Min(255, color.R + 35), 
+                (byte)Math.Min(255, color.G + 35), 
+                (byte)Math.Min(255, color.B + 35));
+            var topGradient = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 1)
+            };
+            topGradient.GradientStops.Add(new GradientStop { Color = lighterColor, Offset = 0 });
+            topGradient.GradientStops.Add(new GradientStop { Color = color, Offset = 1 });
+
+            var topFacePath = new Microsoft.UI.Xaml.Shapes.Path
+            {
+                Fill = topGradient,
+                Stroke = new SolidColorBrush(Colors.Black) { Opacity = 0.15 },
+                StrokeThickness = 0.5
+            };
+            var topFaceGeometry = new PathGeometry();
+            var topFaceFigure = new PathFigure
+            {
+                StartPoint = new Windows.Foundation.Point(baseX, baseY + baseDepth - isoOffsetY),
+                IsClosed = true
+            };
+            topFaceFigure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(baseX + baseWidth, baseY + baseDepth - isoOffsetY) });
+            topFaceFigure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(baseX + baseWidth + isoOffsetX, baseY + baseDepth - isoOffsetY - isoOffsetY) });
+            topFaceFigure.Segments.Add(new LineSegment { Point = new Windows.Foundation.Point(baseX + isoOffsetX, baseY + baseDepth - isoOffsetY - isoOffsetY) });
+            topFaceGeometry.Figures.Add(topFaceFigure);
+            topFacePath.Data = topFaceGeometry;
+            container.Children.Add(topFacePath);
+
+            // Add label on top face if large enough
+            var showLabel = baseWidth >= MinLabelSize && baseDepth >= MinLabelSize;
             if (showLabel)
             {
                 var labelPanel = new StackPanel
                 {
-                    VerticalAlignment = VerticalAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    Margin = new Thickness(4),
-                    MaxWidth = blockWidth - 8,
-                    MaxHeight = blockHeight - 8
+                    MaxWidth = baseWidth - 8,
+                    MaxHeight = baseDepth - 8
                 };
                 var nameText = new TextBlock
                 {
@@ -174,18 +286,18 @@ public sealed partial class TreemapControl : UserControl
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     TextWrapping = TextWrapping.NoWrap,
                     Foreground = new SolidColorBrush(Colors.White),
-                    FontSize = Math.Max(9, Math.Min(12, blockHeight * 0.35)),
+                    FontSize = Math.Max(8, Math.Min(11, Math.Min(baseWidth, baseDepth) * 0.2)),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     TextAlignment = TextAlignment.Center
                 };
                 labelPanel.Children.Add(nameText);
-                if (blockHeight >= MinLabelSize * 1.5)
+                if (baseDepth >= MinLabelSize * 1.5)
                 {
                     var sizeText = new TextBlock
                     {
                         Text = DirectoryNode.FormatSize(node.Size),
                         Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 230, 230, 230)),
-                        FontSize = Math.Max(8, Math.Min(10, blockHeight * 0.25)),
+                        FontSize = Math.Max(7, Math.Min(9, Math.Min(baseWidth, baseDepth) * 0.15)),
                         HorizontalAlignment = HorizontalAlignment.Center,
                         Opacity = 0.9
                     };
@@ -194,23 +306,24 @@ public sealed partial class TreemapControl : UserControl
                 var labelBorder = new Border
                 {
                     Child = labelPanel,
-                    Background = new SolidColorBrush(Windows.UI.Color.FromArgb(80, 0, 0, 0)),
+                    Background = new SolidColorBrush(Windows.UI.Color.FromArgb(160, 0, 0, 0)),
                     CornerRadius = new CornerRadius(2),
-                    Padding = new Thickness(4, 2, 4, 2),
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
+                    Padding = new Thickness(4, 2, 4, 2)
                 };
+                Canvas.SetLeft(labelBorder, baseX + isoOffsetX * 0.3 + 4);
+                Canvas.SetTop(labelBorder, baseY + baseDepth - isoOffsetY - isoOffsetY * 0.5 + 4);
                 container.Children.Add(labelBorder);
             }
 
-            Canvas.SetLeft(container, rect.X + RectPadding);
-            Canvas.SetTop(container, rect.Y + RectPadding);
+            // Position the container
+            Canvas.SetLeft(container, 0);
+            Canvas.SetTop(container, 0);
 
             container.PointerEntered += (s, _) =>
             {
                 if (s is FrameworkElement fe && fe.Tag is DirectoryNode n)
                 {
-                    ToolTipService.SetToolTip(fe, $"{n.Name}\n{DirectoryNode.FormatSize(n.Size)}");
+                    ToolTipService.SetToolTip(fe, $"{n.Name}\n{DirectoryNode.FormatSize(n.Size)}\nHeight: {boxHeight:F0}px");
                 }
             };
             container.PointerPressed += (s, _) =>
@@ -229,6 +342,12 @@ public sealed partial class TreemapControl : UserControl
             container.ContextFlyout = CreateContextMenu(node);
 
             TreemapCanvas.Children.Add(container);
+        }
+        }
+        catch (Exception ex)
+        {
+            // Log or handle rendering errors gracefully
+            System.Diagnostics.Debug.WriteLine($"Treemap rendering error: {ex.Message}");
         }
     }
 

@@ -3,6 +3,7 @@
 global using System.Management;
 global using System.Runtime.InteropServices;
 global using Windows.Storage.Pickers;
+global using System.Text;
 global using DiscUtils;
 global using DiscUtils.Btrfs;
 global using DiscUtils.Ext;

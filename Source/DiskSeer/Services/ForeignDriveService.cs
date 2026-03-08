@@ -1,3 +1,5 @@
+using DiskSeer.Services.Apfs;
+
 namespace DiskSeer.Services;
 
 /// <summary>
@@ -14,7 +16,7 @@ public sealed class ForeignDriveService : IDisposable
     /// <summary>Default degree of parallelism for batch file copy (avoid overwhelming a single disk).</summary>
     public const int DefaultCopyParallelism = 2;
     private Disk? _currentDisk;
-    private IFileSystem? _currentFileSystem;
+    private IForeignFileSystemAdapter? _currentFileSystem;
     private Stream? _currentPartitionStream;
 
     static ForeignDriveService()
@@ -446,10 +448,11 @@ public sealed class ForeignDriveService : IDisposable
             {
                 ForeignFileSystemType.Ext2 or
                 ForeignFileSystemType.Ext3 or
-                ForeignFileSystemType.Ext4 => new ExtFileSystem(_currentPartitionStream),
-                ForeignFileSystemType.HFSPlus => new HfsPlusFileSystem(_currentPartitionStream),
-                ForeignFileSystemType.Btrfs => new BtrfsFileSystem(_currentPartitionStream),
-                ForeignFileSystemType.XFS => new XfsFileSystem(_currentPartitionStream),
+                ForeignFileSystemType.Ext4 => new DiscUtilsAdapter(new ExtFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.HFSPlus => new DiscUtilsAdapter(new HfsPlusFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.Btrfs => new DiscUtilsAdapter(new BtrfsFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.XFS => new DiscUtilsAdapter(new XfsFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.APFS => OpenApfsOrThrow(_currentPartitionStream!),
                 _ => throw new NotSupportedException($"File system type {fsType} is not supported for browsing.")
             };
 
@@ -460,6 +463,16 @@ public sealed class ForeignDriveService : IDisposable
             CloseCurrentPartition();
             return false;
         }
+    }
+
+    private static IForeignFileSystemAdapter OpenApfsOrThrow(Stream partitionStream)
+    {
+        if (!ApfsFileSystem.IsAvailable)
+            throw new NotSupportedException("APFS requires libfsapfs. See Docs/LIBFSAPFS_BUILD.md to build libfsapfs.dll.");
+        var apfs = ApfsFileSystem.Open(partitionStream);
+        if (apfs == null)
+            throw new IOException("Failed to open APFS container.");
+        return apfs;
     }
 
     /// <summary>
@@ -494,10 +507,11 @@ public sealed class ForeignDriveService : IDisposable
             {
                 ForeignFileSystemType.Ext2 or
                 ForeignFileSystemType.Ext3 or
-                ForeignFileSystemType.Ext4 => new ExtFileSystem(_currentPartitionStream),
-                ForeignFileSystemType.HFSPlus => new HfsPlusFileSystem(_currentPartitionStream),
-                ForeignFileSystemType.Btrfs => new BtrfsFileSystem(_currentPartitionStream),
-                ForeignFileSystemType.XFS => new XfsFileSystem(_currentPartitionStream),
+                ForeignFileSystemType.Ext4 => new DiscUtilsAdapter(new ExtFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.HFSPlus => new DiscUtilsAdapter(new HfsPlusFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.Btrfs => new DiscUtilsAdapter(new BtrfsFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.XFS => new DiscUtilsAdapter(new XfsFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.APFS => OpenApfsOrThrow(_currentPartitionStream),
                 _ => throw new NotSupportedException($"File system type {fsType} is not supported.")
             };
 
@@ -538,17 +552,17 @@ public sealed class ForeignDriveService : IDisposable
             {
                 try
                 {
-                    var info = _currentFileSystem.GetDirectoryInfo(dir);
+                    var (lastWrite, creation, lastAccess, attrs) = _currentFileSystem.GetDirectoryInfo(dir);
                     entries.Add(new FileSystemEntry
                     {
                         Name = Path.GetFileName(dir.TrimEnd('/')),
                         FullPath = dir,
                         IsDirectory = true,
                         Size = 0,
-                        LastModified = info.LastWriteTimeUtc,
-                        CreationTime = info.CreationTimeUtc,
-                        LastAccessTime = info.LastAccessTimeUtc,
-                        Permissions = GetPermissionsString(info.Attributes)
+                        LastModified = lastWrite,
+                        CreationTime = creation,
+                        LastAccessTime = lastAccess,
+                        Permissions = GetPermissionsString(attrs)
                     });
                 }
                 catch
@@ -562,17 +576,17 @@ public sealed class ForeignDriveService : IDisposable
             {
                 try
                 {
-                    var info = _currentFileSystem.GetFileInfo(file);
+                    var (length, lastWrite, creation, lastAccess, attrs) = _currentFileSystem.GetFileInfo(file);
                     entries.Add(new FileSystemEntry
                     {
                         Name = Path.GetFileName(file),
                         FullPath = file,
                         IsDirectory = false,
-                        Size = info.Length,
-                        LastModified = info.LastWriteTimeUtc,
-                        CreationTime = info.CreationTimeUtc,
-                        LastAccessTime = info.LastAccessTimeUtc,
-                        Permissions = GetPermissionsString(info.Attributes)
+                        Size = length,
+                        LastModified = lastWrite,
+                        CreationTime = creation,
+                        LastAccessTime = lastAccess,
+                        Permissions = GetPermissionsString(attrs)
                     });
                 }
                 catch
@@ -612,15 +626,7 @@ public sealed class ForeignDriveService : IDisposable
 
         try
         {
-            // Try to get volume label from specific file system types
-            return _currentFileSystem switch
-            {
-                ExtFileSystem ext => GetExtVolumeLabel(ext),
-                HfsPlusFileSystem hfs => "HFS+ Volume",
-                BtrfsFileSystem btrfs => "Btrfs Volume",
-                XfsFileSystem xfs => "XFS Volume",
-                _ => string.Empty
-            };
+            return _currentFileSystem.GetVolumeLabel();
         }
         catch
         {
@@ -687,7 +693,7 @@ public sealed class ForeignDriveService : IDisposable
         }
 
         path = NormalizePath(path);
-        using var stream = _currentFileSystem.OpenFile(path, FileMode.Open, FileAccess.Read);
+        using var stream = _currentFileSystem.OpenFileRead(path);
         using var ms = new MemoryStream();
         stream.CopyTo(ms);
         return ms.ToArray();
@@ -704,7 +710,7 @@ public sealed class ForeignDriveService : IDisposable
         }
 
         path = NormalizePath(path);
-        return _currentFileSystem.OpenFile(path, FileMode.Open, FileAccess.Read);
+        return _currentFileSystem.OpenFileRead(path);
     }
 
     /// <summary>
@@ -726,12 +732,11 @@ public sealed class ForeignDriveService : IDisposable
         }
 
         sourcePath = NormalizePath(sourcePath);
-        var fileInfo = _currentFileSystem.GetFileInfo(sourcePath);
-        long totalBytes = fileInfo.Length;
+        var (totalBytes, _, _, _, _) = _currentFileSystem.GetFileInfo(sourcePath);
 
         await Task.Run(() =>
         {
-            using var sourceStream = _currentFileSystem.OpenFile(sourcePath, FileMode.Open, FileAccess.Read);
+            using var sourceStream = _currentFileSystem.OpenFileRead(sourcePath);
             using var destStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write);
 
             byte[] buffer = new byte[81920];
@@ -823,7 +828,7 @@ public sealed class ForeignDriveService : IDisposable
         await Task.Run(() =>
         {
             using var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read);
-            using var destStream = _currentFileSystem.OpenFile(destinationPath, FileMode.Create, FileAccess.Write);
+            using var destStream = _currentFileSystem.OpenFileWrite(destinationPath);
 
             byte[] buffer = new byte[81920];
             long totalCopied = 0;
@@ -936,11 +941,11 @@ public sealed class ForeignDriveService : IDisposable
             }
             foreach (var dir in _currentFileSystem.GetDirectories(path))
             {
-                DeleteDirectory(dir);
+                DeleteDirectory(dir, true);
             }
         }
 
-        _currentFileSystem.DeleteDirectory(path);
+        _currentFileSystem.DeleteDirectory(path, recursive);
     }
 
     /// <summary>

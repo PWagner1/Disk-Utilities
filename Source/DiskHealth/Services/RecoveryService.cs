@@ -88,7 +88,7 @@ public static class RecoveryService
         }
 
         string path = $"\\\\.\\{driveLetter}:";
-        const int FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+        const int fileFlagBackupSemantics = 0x02000000;
 
         await Task.Run(() =>
         {
@@ -100,7 +100,7 @@ public static class RecoveryService
                     FileShare.Read,
                     IntPtr.Zero,
                     FileMode.Open,
-                    (FileAttributes)FILE_FLAG_BACKUP_SEMANTICS,
+                    (FileAttributes)fileFlagBackupSemantics,
                     IntPtr.Zero);
 
                 if (!handle.IsInvalid)
@@ -221,7 +221,7 @@ public static class RecoveryService
     {
         driveLetter = driveLetter.Trim().TrimEnd(':');
         string path = $"\\\\.\\{driveLetter}:";
-        const int FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+        const int fileFlagBackupSemantics = 0x02000000;
 
         var toRecover = files.Where(f => f.IsSelected).ToList();
         int total = toRecover.Count;
@@ -250,7 +250,7 @@ public static class RecoveryService
                         FileShare.ReadWrite,
                         IntPtr.Zero,
                         FileMode.Open,
-                        (FileAttributes)FILE_FLAG_BACKUP_SEMANTICS,
+                        (FileAttributes)fileFlagBackupSemantics,
                         IntPtr.Zero);
 
                     if (!handle.IsInvalid)

@@ -601,6 +601,51 @@ public sealed partial class PartitionManagementWindow : Window
         return pathShape;
     }
 
+    /// <summary>Shows a confirmation dialog before formatting. User must check a box to proceed.</summary>
+    private async Task<bool> ShowFormatConfirmDialogAsync(string driveLetter)
+    {
+        var message = $"You are about to format drive {driveLetter} as NTFS.\n\n"
+            + "All data on this drive will be permanently erased. This cannot be undone.";
+
+        var confirmCheckBox = new CheckBox
+        {
+            Content = "I understand that all data will be permanently erased and I want to proceed"
+        };
+        var errorText = new TextBlock
+        {
+            Text = "Please check the box above to confirm.",
+            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 180, 0, 0)),
+            Visibility = Visibility.Collapsed,
+            TextWrapping = TextWrapping.Wrap
+        };
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(confirmCheckBox);
+        panel.Children.Add(errorText);
+
+        var dialog = new ContentDialog
+        {
+            Title = "Confirm format",
+            Content = panel,
+            PrimaryButtonText = "Format",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot
+        };
+
+        dialog.Closing += (s, e) =>
+        {
+            if (e.Result == ContentDialogResult.Primary && confirmCheckBox.IsChecked != true)
+            {
+                e.Cancel = true;
+                errorText.Visibility = Visibility.Visible;
+            }
+        };
+
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary;
+    }
+
     private static string FormatBytes(ulong bytes)
     {
         string[] sizes = ["B", "KB", "MB", "GB", "TB"];
@@ -740,6 +785,12 @@ public sealed partial class PartitionManagementWindow : Window
     {
         var entry = PartitionList.SelectedItem as PartitionListEntry;
         if (entry?.Partition == null || string.IsNullOrEmpty(entry.Partition.DriveLetter) || entry.Partition.IsProtected)
+        {
+            return;
+        }
+
+        bool confirmed = await ShowFormatConfirmDialogAsync(entry.Partition.DriveLetter);
+        if (!confirmed)
         {
             return;
         }

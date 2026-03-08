@@ -263,22 +263,48 @@ public sealed partial class MainWindow : Window
         // Optional: sync combo when user types a letter that matches a listed drive
     }
 
-    /// <summary>Shows a confirmation dialog before formatting. Returns true if the user confirms.</summary>
+    /// <summary>Shows a confirmation dialog before formatting. User must check a box to proceed. Returns true if the user confirms.</summary>
     private async Task<bool> ShowFormatConfirmDialogAsync(string driveLetter, string fileSystem, bool secureDeletion, int wipePasses)
     {
         var message = $"You are about to format drive {driveLetter} as {fileSystem}.\n\n"
-            + "All data on this drive will be lost."
-            + (secureDeletion ? $"\n\nSecure deletion ({wipePasses} pass(es)) will run first." : "")
-            + "\n\nDo you want to continue?";
+            + "All data on this drive will be permanently erased. This cannot be undone."
+            + (secureDeletion ? $"\n\nSecure deletion ({wipePasses} pass(es)) will run first." : "");
+
+        var confirmCheckBox = new CheckBox
+        {
+            Content = "I understand that all data will be permanently erased and I want to proceed"
+        };
+        var errorText = new TextBlock
+        {
+            Text = "Please check the box above to confirm.",
+            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 180, 0, 0)),
+            Visibility = Visibility.Collapsed,
+            TextWrapping = TextWrapping.Wrap
+        };
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(confirmCheckBox);
+        panel.Children.Add(errorText);
+
         var dialog = new ContentDialog
         {
             Title = "Confirm format",
-            Content = message,
+            Content = panel,
             PrimaryButtonText = "Format",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = Content.XamlRoot
         };
+
+        dialog.Closing += (s, e) =>
+        {
+            if (e.Result == ContentDialogResult.Primary && confirmCheckBox.IsChecked != true)
+            {
+                e.Cancel = true;
+                errorText.Visibility = Visibility.Visible;
+            }
+        };
+
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
     }
