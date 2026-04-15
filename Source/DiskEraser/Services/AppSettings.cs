@@ -16,7 +16,11 @@ public static class AppSettings
 
     /// <summary>Theme values: Light, Dark, or Default (use system).</summary>
     public const string ThemeLight = "Light";
+
+    /// <summary>Theme values: Light, Dark, or Default (use system).</summary>
     public const string ThemeDark = "Dark";
+
+    /// <summary>Theme values: Light, Dark, or Default (use system).</summary>
     public const string ThemeDefault = "Default";
 
     /// <summary>Gets the app theme (Light, Dark, or Default).</summary>

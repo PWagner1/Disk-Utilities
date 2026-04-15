@@ -245,7 +245,7 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
 
     private static bool IsDirectory(IntPtr entry)
     {
-        return LibFsApfsNative.FileEntryGetFileMode(entry, out var mode, out _) == 1 && (mode & LibFsApfsNative.S_IFDIR) != 0;
+        return LibFsApfsNative.FileEntryGetFileMode(entry, out var mode, out _) == 1 && (mode & LibFsApfsNative.SIfdir) != 0;
     }
 
     private static string GetUtf8Name(IntPtr entry)

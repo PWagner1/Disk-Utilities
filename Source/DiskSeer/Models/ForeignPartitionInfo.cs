@@ -29,7 +29,7 @@ public class ForeignPartitionInfo
     public bool IsSupported => FileSystemType switch
     {
         ForeignFileSystemType.Unknown => false,
-        ForeignFileSystemType.APFS => ApfsFileSystem.IsAvailable,
+        ForeignFileSystemType.Apfs => ApfsFileSystem.IsAvailable,
         _ => true
     };
 

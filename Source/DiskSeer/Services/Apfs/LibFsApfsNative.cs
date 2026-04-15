@@ -12,7 +12,7 @@ internal static class LibFsApfsNative
     private const string DllName = "libfsapfs-1";
 
     // S_IFDIR from sys/stat.h
-    public const int S_IFDIR = 0x4000;
+    public const int SIfdir = 0x4000;
 
     /// <summary>Returns 1 if the library is available (DLL loaded).</summary>
     public static bool IsAvailable { get; } = LoadLibrary();

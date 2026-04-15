@@ -54,6 +54,8 @@ public sealed partial class MainWindow : Window
     {
         StatusText.Text = "Scanning for drives (multicore)...";
         RefreshDrivesButton.IsEnabled = false;
+        OperationProgress.IsIndeterminate = true;
+        OperationProgress.Visibility = Visibility.Visible;
 
         try
         {
@@ -101,7 +103,11 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            DispatcherQueue.TryEnqueue(() => RefreshDrivesButton.IsEnabled = true);
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                RefreshDrivesButton.IsEnabled = true;
+                OperationProgress.Visibility = Visibility.Collapsed;
+            });
         }
     }
 

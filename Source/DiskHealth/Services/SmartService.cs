@@ -35,14 +35,13 @@ public static class SmartService
 
     /// <summary>
     /// Gets physical drives with S.M.A.R.T. status and attributes.
-    /// Uses parallel WMI queries for better performance on multi-drive systems.
+    /// Uses WMI root\WMI. MSStorageDriver_ATAPISmartData applies to SATA/ATA only; NVMe drives show health status only.
     /// </summary>
     public static IReadOnlyList<SmartDriveInfo> GetSmartDrives()
     {
         var list = new List<SmartDriveInfo>();
         try
         {
-            // Run WMI queries in parallel for faster data collection
             Dictionary<string, string>? pnpMap = null;
             Dictionary<string, (bool?, uint?)>? failureMap = null;
             Dictionary<string, byte[]>? smartMap = null;
@@ -62,38 +61,50 @@ public static class SmartService
 
             foreach (ManagementBaseObject obj in searcher.Get())
             {
-                var pnpId = obj["PNPDeviceID"]?.ToString();
+                var pnpId = obj["PNPDeviceID"]?.ToString()?.Trim();
                 if (string.IsNullOrEmpty(pnpId))
-                {
                     continue;
-                }
 
-                var instanceName = pnpMap.GetValueOrDefault(pnpId.ToUpperInvariant());
-                if (string.IsNullOrEmpty(instanceName))
-                {
-                    continue;
-                }
+                // Match InstanceName to PNPDeviceID. Try: 1) direct match in smart/failure maps, 2) MSWmi_PnPDeviceId mapping
+                var instanceName = FindMatchingInstanceName(pnpId, smartMap.Keys)
+                    ?? FindMatchingInstanceName(pnpId, failureMap.Keys)
+                    ?? pnpMap!.GetValueOrDefault(pnpId);
 
-                var (predictFailure, reason) = failureMap.GetValueOrDefault(instanceName, (null, null));
-                var vendorSpecific = smartMap.GetValueOrDefault(instanceName);
+                var (predictFailure, reason) = instanceName != null ? failureMap.GetValueOrDefault(instanceName, (null, null)) : (null, null);
+                var vendorSpecific = instanceName != null ? smartMap.GetValueOrDefault(instanceName) : null;
 
-                var drive = new SmartDriveInfo
+                list.Add(new SmartDriveInfo
                 {
                     Index = obj["Index"] != null ? Convert.ToInt32(obj["Index"]) : -1,
                     Model = obj["Model"]?.ToString()?.Trim() ?? "Unknown",
                     Size = obj["Size"] != null ? Convert.ToUInt64(obj["Size"]) : 0,
-                    PNPDeviceID = pnpId,
+                    PnpDeviceId = pnpId,
                     PredictFailure = predictFailure,
                     Reason = reason,
                     Attributes = ParseSmartAttributes(vendorSpecific)
-                };
-
-                list.Add(drive);
+                });
             }
         }
         catch { /* Caller can handle empty list */ }
 
         return list.OrderBy(d => d.Index).ToList();
+    }
+
+    /// <summary>
+    /// Finds an InstanceName that matches the given PNPDeviceID.
+    /// InstanceName may equal PNPDeviceID (case-insensitive) or have a trailing suffix like _0.
+    /// </summary>
+    private static string? FindMatchingInstanceName(string pnpDeviceId, IEnumerable<string> instanceNames)
+    {
+        foreach (var iname in instanceNames)
+        {
+            if (string.IsNullOrEmpty(iname)) continue;
+            if (string.Equals(iname, pnpDeviceId, StringComparison.OrdinalIgnoreCase))
+                return iname;
+            if (iname.StartsWith(pnpDeviceId, StringComparison.OrdinalIgnoreCase) && iname.Length > pnpDeviceId.Length && iname[pnpDeviceId.Length] == '_')
+                return iname;
+        }
+        return null;
     }
 
     /// <summary>
@@ -112,12 +123,10 @@ public static class SmartService
             using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT PnPDeviceId, InstanceName FROM MSWmi_PnPDeviceId");
             foreach (ManagementBaseObject obj in searcher.Get())
             {
-                var pnpId = obj["PnPDeviceId"]?.ToString();
-                var instanceName = obj["InstanceName"]?.ToString();
+                var pnpId = obj["PnPDeviceId"]?.ToString()?.TrimEnd(' ', '\0');
+                var instanceName = obj["InstanceName"]?.ToString()?.TrimEnd(' ', '\0');
                 if (!string.IsNullOrEmpty(pnpId) && !string.IsNullOrEmpty(instanceName))
-                {
-                    map[pnpId.TrimEnd(' ', '\0')] = instanceName.TrimEnd(' ', '\0');
-                }
+                    map[pnpId] = instanceName;
             }
         }
         catch { /* Return empty map */ }

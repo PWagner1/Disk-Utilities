@@ -1,5 +1,6 @@
 namespace DiskEraser;
 
+
 public sealed class WindowUtilities
 {
     private const int GWL_STYLE = -16;
@@ -77,5 +78,5 @@ public sealed class WindowUtilities
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 }

@@ -11,11 +11,22 @@ public sealed partial class MainWindow : Window
     private string? _cachedFormattableHex, _cachedSystemHex, _cachedNoLetterHex;
     private SolidColorBrush? _cachedFormattableBrush, _cachedSystemBrush, _cachedNoLetterBrush, _cachedWhiteBrush;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether [get is secure delete active].
+    /// </summary>
+    /// <value>
+    ///   <c>true</c> if [get is secure delete active]; otherwise, <c>false</c>.
+    /// </value>
     public bool GetIsSecureDeleteActive { get; set; }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="MainWindow"/> class.
+    /// </summary>
     public MainWindow()
     {
         InitializeComponent();
+        ClusterSizeBox.InputScope = new InputScope();
+        ClusterSizeBox.InputScope.Names.Add(new InputScopeName(InputScopeNameValue.Number));
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
         TrySetWindowSize(1500, 800);

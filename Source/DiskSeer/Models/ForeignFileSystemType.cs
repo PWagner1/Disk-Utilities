@@ -11,8 +11,8 @@ public enum ForeignFileSystemType
     Ext3,
     Ext4,
     Btrfs,
-    XFS,
+    Xfs,
     // Apple file systems
-    HFSPlus,
-    APFS // Note: APFS has limited support
+    HfsPlus,
+    Apfs // Note: APFS has limited support
 }

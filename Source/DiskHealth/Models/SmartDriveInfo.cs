@@ -13,7 +13,7 @@ public class SmartDriveInfo
     public uint? Reason { get; set; }
     public string HealthStatus => PredictFailure == true ? "⚠️ Failure predicted" : PredictFailure == false ? "✓ OK" : "—";
     public IReadOnlyList<SmartAttribute> Attributes { get; set; } = [];
-    public string PNPDeviceID { get; set; } = string.Empty;
+    public string PnpDeviceId { get; set; } = string.Empty;
 
     private static string FormatSize(ulong bytes)
     {

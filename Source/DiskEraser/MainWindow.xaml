@@ -74,7 +74,7 @@
                                       PlaceholderText="Preset..."
                                       Width="250"
                                       SelectionChanged="ClusterSizePresetCombo_SelectionChanged" />
-                            <TextBox x:Name="ClusterSizeBox" PlaceholderText="0 or custom bytes" InputScope="Number" HorizontalAlignment="Stretch" />
+                            <TextBox x:Name="ClusterSizeBox" PlaceholderText="0 or custom bytes" HorizontalAlignment="Stretch" />
                         </StackPanel>
                     </StackPanel>
                     <CheckBox x:Name="QuickFormatCheck" Content="Quick format (skip bad sector scan)" IsChecked="True" />

@@ -172,6 +172,7 @@ public sealed partial class PartitionManagementWindow : Window
     private readonly record struct PieSliceData(double StartAngleDeg, double SweepDeg, Windows.UI.Color Color, string Label, string Tooltip);
 
     /// <summary>Computes pie slice angles, colors, and labels on a thread-pool thread; UI elements are created on the dispatcher.</summary>
+    /// <param name="disk">The disk whose partitions are rendered in the pie chart.</param>
     /// <param name="selectedSliceIndex">When set, rotates the pie so this slice faces the user (bottom/front).</param>
     private async Task BuildPieChartAsync(DiskInfo disk, int? selectedSliceIndex = null)
     {
@@ -232,6 +233,7 @@ public sealed partial class PartitionManagementWindow : Window
     }
 
     /// <summary>Runs on UI thread; creates chart with labels on each slice.</summary>
+    /// <param name="slices">Precomputed pie slice data from ComputePieSliceData.</param>
     /// <param name="selectedSliceIndex">When valid, rotates the pie so this slice faces the user (bottom/front at 90°).</param>
     private void CreatePieChartFromData(List<PieSliceData> slices, int? selectedSliceIndex = null)
     {

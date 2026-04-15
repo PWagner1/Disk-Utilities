@@ -4,6 +4,7 @@ global using System.Collections.Concurrent;
 global using System.Collections.ObjectModel;
 global using System.ComponentModel;
 global using System.IO;
+global using System.Linq;
 global using System.Management;
 global using System.Runtime.CompilerServices;
 global using System.Runtime.InteropServices;

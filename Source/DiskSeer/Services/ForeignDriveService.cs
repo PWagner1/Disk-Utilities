@@ -304,12 +304,12 @@ public sealed class ForeignDriveService : IDisposable
                 {
                     if (sig[0] == 'H' && sig[1] == '+')
                     {
-                        return ForeignFileSystemType.HFSPlus;
+                        return ForeignFileSystemType.HfsPlus;
                     }
 
                     if (sig[0] == 'H' && sig[1] == 'X')
                     {
-                        return ForeignFileSystemType.HFSPlus; // HFSX
+                        return ForeignFileSystemType.HfsPlus; // HFSX
                     }
                 }
             }
@@ -324,7 +324,7 @@ public sealed class ForeignDriveService : IDisposable
                     if (apfsMagic[0] == 'N' && apfsMagic[1] == 'X' && 
                         apfsMagic[2] == 'S' && apfsMagic[3] == 'B')
                     {
-                        return ForeignFileSystemType.APFS;
+                        return ForeignFileSystemType.Apfs;
                     }
                 }
             }
@@ -356,7 +356,7 @@ public sealed class ForeignDriveService : IDisposable
                     if (xfsMagic[0] == 'X' && xfsMagic[1] == 'F' &&
                         xfsMagic[2] == 'S' && xfsMagic[3] == 'B')
                     {
-                        return ForeignFileSystemType.XFS;
+                        return ForeignFileSystemType.Xfs;
                     }
                 }
             }
@@ -383,9 +383,9 @@ public sealed class ForeignDriveService : IDisposable
                 ForeignFileSystemType.Ext2 or 
                 ForeignFileSystemType.Ext3 or 
                 ForeignFileSystemType.Ext4 => new ExtFileSystem(stream),
-                ForeignFileSystemType.HFSPlus => new HfsPlusFileSystem(stream),
+                ForeignFileSystemType.HfsPlus => new HfsPlusFileSystem(stream),
                 ForeignFileSystemType.Btrfs => new BtrfsFileSystem(stream),
-                ForeignFileSystemType.XFS => new XfsFileSystem(stream),
+                ForeignFileSystemType.Xfs => new XfsFileSystem(stream),
                 _ => null
             };
 
@@ -449,10 +449,10 @@ public sealed class ForeignDriveService : IDisposable
                 ForeignFileSystemType.Ext2 or
                 ForeignFileSystemType.Ext3 or
                 ForeignFileSystemType.Ext4 => new DiscUtilsAdapter(new ExtFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.HFSPlus => new DiscUtilsAdapter(new HfsPlusFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.HfsPlus => new DiscUtilsAdapter(new HfsPlusFileSystem(_currentPartitionStream)),
                 ForeignFileSystemType.Btrfs => new DiscUtilsAdapter(new BtrfsFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.XFS => new DiscUtilsAdapter(new XfsFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.APFS => OpenApfsOrThrow(_currentPartitionStream!),
+                ForeignFileSystemType.Xfs => new DiscUtilsAdapter(new XfsFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.Apfs => OpenApfsOrThrow(_currentPartitionStream!),
                 _ => throw new NotSupportedException($"File system type {fsType} is not supported for browsing.")
             };
 
@@ -508,10 +508,10 @@ public sealed class ForeignDriveService : IDisposable
                 ForeignFileSystemType.Ext2 or
                 ForeignFileSystemType.Ext3 or
                 ForeignFileSystemType.Ext4 => new DiscUtilsAdapter(new ExtFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.HFSPlus => new DiscUtilsAdapter(new HfsPlusFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.HfsPlus => new DiscUtilsAdapter(new HfsPlusFileSystem(_currentPartitionStream)),
                 ForeignFileSystemType.Btrfs => new DiscUtilsAdapter(new BtrfsFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.XFS => new DiscUtilsAdapter(new XfsFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.APFS => OpenApfsOrThrow(_currentPartitionStream),
+                ForeignFileSystemType.Xfs => new DiscUtilsAdapter(new XfsFileSystem(_currentPartitionStream)),
+                ForeignFileSystemType.Apfs => OpenApfsOrThrow(_currentPartitionStream),
                 _ => throw new NotSupportedException($"File system type {fsType} is not supported.")
             };
 

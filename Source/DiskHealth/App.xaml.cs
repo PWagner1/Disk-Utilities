@@ -5,16 +5,20 @@ namespace DiskHealth;
 /// </summary>
 public partial class App : Application
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="App"/> class.
+    /// </summary>
     public App()
     {
         InitializeComponent();
         UnhandledException += OnUnhandledException;
     }
 
+    /// <inheritdoc />
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        m_window = new MainWindow();
-        m_window.Activate();
+        _mWindow = new MainWindow();
+        _mWindow.Activate();
     }
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
@@ -42,5 +46,5 @@ public partial class App : Application
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "MessageBoxW")]
     private static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 
-    private MainWindow? m_window;
+    private MainWindow? _mWindow;
 }

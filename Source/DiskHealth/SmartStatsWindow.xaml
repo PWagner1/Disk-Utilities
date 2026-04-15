@@ -19,16 +19,17 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+            <StackPanel x:Name="DriveToolbar" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
                 <ComboBox x:Name="SmartDriveCombo"
                           PlaceholderText="Select a physical drive..."
                           DisplayMemberPath="DisplayText"
                           Width="450"
                           SelectionChanged="SmartDriveCombo_SelectionChanged" />
-                <Button x:Name="RefreshSmartButton" Content="Refresh" Click="RefreshSmartButton_Click" />
+                <Button x:Name="RefreshButton" Content="Refresh" Click="RefreshButton_Click" />
             </StackPanel>
 
             <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
@@ -36,7 +37,18 @@
                 <TextBlock x:Name="SmartHealthText" Text="—" VerticalAlignment="Center" />
             </StackPanel>
 
-            <Grid Grid.Row="2" Margin="0,0,0,4">
+            <Border Grid.Row="2" x:Name="HealthCard" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                <StackPanel Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Health score:" FontWeight="SemiBold" />
+                        <TextBlock x:Name="HealthScoreText" Text="—" />
+                    </StackPanel>
+                    <ProgressBar x:Name="HealthScoreBar" Minimum="0" Maximum="100" Value="0" Height="8" />
+                    <TextBlock x:Name="HealthSummaryText" Text="No drive selected." Opacity="0.8" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="3" Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="80" />
                     <ColumnDefinition Width="*" />
@@ -51,7 +63,7 @@
                 <TextBlock Grid.Column="4" Text="Raw" FontWeight="SemiBold" Opacity="0.8" />
             </Grid>
 
-            <ListView Grid.Row="3"
+            <ListView Grid.Row="4"
                       x:Name="SmartAttributesList"
                       MinHeight="300"
                       IsItemClickEnabled="False"
