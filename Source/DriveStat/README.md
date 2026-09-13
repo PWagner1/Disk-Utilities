@@ -17,11 +17,23 @@ A WinUI 3 disk usage statistics viewer inspired by [WinDirStat](https://windirst
 
 ## Building
 
-```bash
+```powershell
+cd Source
 dotnet build DriveStat\DriveStat.csproj -c Debug -p:Platform=x64
+dotnet run --project DriveStat -p:Platform=x64
 ```
+
+Executable output (repo root):
+
+`bin\x64\Debug\net10.0-windows10.0.19041.0\DriveStat.exe`
 
 ## Requirements
 
-- Windows 10 19041 or later
-- .NET 10.0 (or the target framework specified in the project)
+- Windows 10 19041 or later / Windows 11
+- .NET 10 SDK and Windows App SDK 2.x (see project file)
+- Platform: x64, x86, or ARM64 (not AnyCPU)
+
+## Related
+
+- Suite overview: [Source/README.md](../README.md)
+- Root README: [Disk Utilities](../../README.md)

@@ -19,7 +19,20 @@ public sealed partial class MainWindow : Window
         TrySetExtendedTitleBar();
         TrySetWindowSize(900, 600);
         HandlesList.ItemsSource = _handles;
+        ConfigureElevationBanner();
         LoadDrives();
+    }
+
+    private void ConfigureElevationBanner()
+    {
+        ElevationUi.StyleWarningBanner(ElevationBanner);
+        ElevationUi.ConfigureBanner(
+            ElevationBanner,
+            ElevationBannerText,
+            "Not running as Administrator. Handle enumeration needs elevation to inspect other processes.",
+            RestartAsAdminButton,
+            null,
+            "Finding and closing handles needs Administrator rights (SeDebugPrivilege).");
     }
 
     private void LoadDrives()

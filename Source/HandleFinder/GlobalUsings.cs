@@ -12,4 +12,5 @@ global using Microsoft.UI.Xaml.Input;
 global using Microsoft.UI.Xaml.Media;
 global using HandleFinder.Models;
 global using HandleFinder.Services;
+global using DiskUtilities.Shared;
 global using WinRT.Interop;

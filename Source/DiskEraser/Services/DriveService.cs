@@ -2,39 +2,191 @@ namespace DiskEraser.Services;
 
 /// <summary>
 /// Service for enumerating logical drives and formatting volumes via WMI (Win32_Volume).
-/// Offers Windows (NTFS, FAT, exFAT, ReFS), Linux (ext2/3/4, Btrfs, XFS), and Apple (HFS, HFS+, APFS) file systems.
-/// Windows natively formats only NTFS, FAT, FAT32, and optionally exFAT/ReFS; others typically return "Unsupported file system".
+/// Native format targets are NTFS, FAT, FAT32, exFAT, and ReFS. Linux/Apple options are listed but disabled in the UI
+/// because stock Windows typically returns "Unsupported file system".
 /// </summary>
 public static class DriveService
 {
-    /// <summary>Drive letter that must never be formatted (system drive).</summary>
+    /// <summary>Drive letter that must never be formatted (Windows system volume).</summary>
     public const string ProtectedDriveLetter = "C:";
 
     /// <summary>
-    /// Presets for secure deletion (multiple overwrite passes). Passes overwrite free space with random data before format.
+    /// Presets for free-space overwrite before format. Not ATA Secure Erase / NVMe Sanitize and not a standards certification.
     /// </summary>
     public static readonly (string DisplayName, int Passes)[] SecureWipePresets =
     [
-        ("1 pass (quick overwrite)", 1),
-        ("3 passes (DoD 5220.22-M)", 3),
-        ("7 passes (Military grade)", 7)
+        ("1 pass — free-space overwrite", 1),
+        ("3 passes — free-space overwrite (higher effort)", 3),
+        ("7 passes — free-space overwrite (highest effort)", 7)
     ];
 
+    /// <summary>File system option for the format UI.</summary>
+    /// <param name="Name">File system name passed to WMI Format.</param>
+    /// <param name="IsNativelySupported">True if stock Windows can typically format this via WMI.</param>
+    public readonly record struct FileSystemOption(string Name, bool IsNativelySupported);
+
     /// <summary>
-    /// File systems offered by the format UI (Windows, Linux, and Apple).
-    /// Win32_Volume.Format natively supports NTFS, FAT, FAT32; exFAT/ReFS may work on newer Windows.
-    /// ext, APFS, HFS, etc. are listed for completeness; formatting them on Windows usually returns "Unsupported file system" unless third-party tools are used.
+    /// File systems shown in the format UI. Only <see cref="FileSystemOption.IsNativelySupported"/> options are selectable.
     /// </summary>
-    public static readonly string[] SupportedFileSystems =
+    public static readonly FileSystemOption[] FormatFileSystems =
     [
-        "NTFS", "FAT32", "FAT", "exFAT", "ReFS",
-        "ext2", "ext3", "ext4", "Btrfs", "XFS",
-        "HFS", "HFS+", "APFS"
+        new("NTFS", true),
+        new("FAT32", true),
+        new("FAT", true),
+        new("exFAT", true),
+        new("ReFS", true),
+        new("ext2", false),
+        new("ext3", false),
+        new("ext4", false),
+        new("Btrfs", false),
+        new("XFS", false),
+        new("HFS", false),
+        new("HFS+", false),
+        new("APFS", false)
+    ];
+
+    /// <summary>Legacy list of all format UI names (native + non-native).</summary>
+    public static readonly string[] SupportedFileSystems =
+        [.. FormatFileSystems.Select(f => f.Name)];
+
+    private static readonly string[] ProtectedLabelHints =
+    [
+        "SYSTEM RESERVED", "SYSTEM", "EFI", "ESP", "RECOVERY", "WINDOWS RE", "WINRE", "BOOT", "MSR"
     ];
 
     /// <summary>
-    /// Enumerates all logical volumes that have a drive letter and are safe to list for formatting.
-    /// Excludes the protected system drive (C:).
+    /// Returns true if the volume must not be formatted or wiped (system/boot/EFI/recovery/BitLocker system volumes).
+    /// </summary>
+    public static bool IsProtectedVolume(
+        string? driveLetter,
+        string? label = null,
+        bool? bootVolume = null,
+        bool? systemVolume = null,
+        string? partitionType = null)
+    {
+        var letter = NormalizeLetter(driveLetter);
+        if (!string.IsNullOrEmpty(letter) &&
+            letter.Equals(ProtectedDriveLetter, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (bootVolume == true || systemVolume == true)
+        {
+            return true;
+        }
+
+        if (LabelLooksProtected(label))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrEmpty(partitionType))
+        {
+            string type = partitionType;
+            if (type.Contains("System", StringComparison.OrdinalIgnoreCase) ||
+                type.Contains("Recovery", StringComparison.OrdinalIgnoreCase) ||
+                type.Contains("EFI", StringComparison.OrdinalIgnoreCase) ||
+                type.Contains("Reserved", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Looks up volume flags/label via WMI and returns whether the drive letter is protected.</summary>
+    public static bool IsProtectedDriveLetter(string? driveLetter)
+    {
+        var letter = NormalizeLetter(driveLetter);
+        if (string.IsNullOrEmpty(letter))
+        {
+            return false;
+        }
+
+        if (letter.Equals(ProtectedDriveLetter, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT DriveLetter, Label, BootVolume, SystemVolume FROM Win32_Volume WHERE DriveLetter IS NOT NULL");
+            foreach (ManagementBaseObject obj in searcher.Get())
+            {
+                var volLetter = NormalizeLetter(obj["DriveLetter"]?.ToString());
+                if (!letter.Equals(volLetter, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return IsProtectedVolume(
+                    volLetter,
+                    obj["Label"]?.ToString(),
+                    obj["BootVolume"] as bool?,
+                    obj["SystemVolume"] as bool?);
+            }
+        }
+        catch
+        {
+            // Fall through to C:-only protection if WMI fails
+        }
+
+        return false;
+    }
+
+    private static bool LabelLooksProtected(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return false;
+        }
+
+        string normalized = label.Trim().ToUpperInvariant();
+        foreach (string hint in ProtectedLabelHints)
+        {
+            if (normalized == hint || normalized.Contains(hint, StringComparison.Ordinal))
+            {
+                // Avoid treating a user volume named e.g. "My Boot Backup" too aggressively:
+                // require exact match for short ambiguous tokens SYSTEM/BOOT/MSR.
+                if (hint is "SYSTEM" or "BOOT" or "MSR")
+                {
+                    if (normalized == hint || normalized.StartsWith(hint + " ", StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeLetter(string? driveLetter)
+    {
+        if (string.IsNullOrWhiteSpace(driveLetter))
+        {
+            return string.Empty;
+        }
+
+        var letter = driveLetter.Trim().ToUpperInvariant();
+        if (!letter.EndsWith(':'))
+        {
+            letter += ":";
+        }
+
+        return letter;
+    }
+
+    /// <summary>
+    /// Enumerates logical volumes that have a drive letter and are safe to list for formatting.
+    /// Excludes protected system/boot/EFI/recovery volumes (including C:).
     /// </summary>
     /// <returns>List of drive items; empty on WMI or permission errors.</returns>
     public static IReadOnlyList<DriveItem> GetFormattableDrives()
@@ -43,11 +195,13 @@ public static class DriveService
         try
         {
             using var searcher = new ManagementObjectSearcher(
-                "SELECT DriveLetter, Label, FileSystem, Capacity, FreeSpace FROM Win32_Volume WHERE DriveLetter IS NOT NULL");
+                "SELECT DriveLetter, Label, FileSystem, Capacity, FreeSpace, BootVolume, SystemVolume FROM Win32_Volume WHERE DriveLetter IS NOT NULL");
             foreach (ManagementBaseObject obj in searcher.Get())
             {
-                var letter = obj["DriveLetter"]?.ToString()?.Trim().ToUpperInvariant();
-                if (string.IsNullOrEmpty(letter) || letter.Equals(ProtectedDriveLetter, StringComparison.OrdinalIgnoreCase))
+                var letter = NormalizeLetter(obj["DriveLetter"]?.ToString());
+                string label = obj["Label"]?.ToString() ?? string.Empty;
+                if (string.IsNullOrEmpty(letter) ||
+                    IsProtectedVolume(letter, label, obj["BootVolume"] as bool?, obj["SystemVolume"] as bool?))
                 {
                     continue;
                 }
@@ -55,7 +209,7 @@ public static class DriveService
                 list.Add(new DriveItem
                 {
                     DriveLetter = letter,
-                    Label = obj["Label"]?.ToString() ?? string.Empty,
+                    Label = label,
                     FileSystem = obj["FileSystem"]?.ToString() ?? string.Empty,
                     Capacity = obj["Capacity"] != null ? Convert.ToUInt64(obj["Capacity"]) : 0,
                     FreeSpace = obj["FreeSpace"] != null ? Convert.ToUInt64(obj["FreeSpace"]) : 0
@@ -113,19 +267,22 @@ public static class DriveService
                 }
 
                 using var partitionSearcher = new ManagementObjectSearcher(
-                    $"SELECT DeviceID, Index, Size, StartingOffset FROM Win32_DiskPartition WHERE DiskIndex = {diskIndex}");
+                    $"SELECT DeviceID, Index, Size, StartingOffset, Type FROM Win32_DiskPartition WHERE DiskIndex = {diskIndex}");
                 foreach (ManagementBaseObject partObj in partitionSearcher.Get())
                 {
                     using var partition = (ManagementObject)partObj;
                     int partIndex = Convert.ToInt32(partition["Index"]);
                     ulong partSize = partition["Size"] != null ? Convert.ToUInt64(partition["Size"]) : 0;
                     ulong partOffset = partition["StartingOffset"] != null ? Convert.ToUInt64(partition["StartingOffset"]) : 0;
+                    string partitionType = partition["Type"]?.ToString() ?? string.Empty;
 
                     string driveLetter = string.Empty;
                     string label = string.Empty;
                     string fileSystem = string.Empty;
                     ulong capacity = partSize;
                     ulong freeSpace = 0;
+                    bool? bootVolume = null;
+                    bool? systemVolume = null;
 
                     try
                     {
@@ -133,13 +290,15 @@ public static class DriveService
                         foreach (ManagementBaseObject ldObj in logicalDisks)
                         {
                             using var ld = (ManagementObject)ldObj;
-                            driveLetter = ld["DeviceID"]?.ToString()?.Trim().ToUpperInvariant() ?? string.Empty;
+                            driveLetter = NormalizeLetter(ld["DeviceID"]?.ToString());
                             if (!string.IsNullOrEmpty(driveLetter) && volumeInfoByLetter.TryGetValue(driveLetter, out var vol))
                             {
                                 label = vol.Label;
                                 fileSystem = vol.FileSystem;
                                 capacity = vol.Capacity;
                                 freeSpace = vol.FreeSpace;
+                                bootVolume = vol.BootVolume;
+                                systemVolume = vol.SystemVolume;
                             }
                             break;
                         }
@@ -147,6 +306,18 @@ public static class DriveService
                     catch
                     {
                         // Partition may have no drive letter (e.g. recovery, EFI)
+                    }
+
+                    bool protectedPartition = IsProtectedVolume(driveLetter, label, bootVolume, systemVolume, partitionType);
+                    // Letterless FAT/FAT32 under ~1 GB is typically the EFI system partition.
+                    if (!protectedPartition &&
+                        string.IsNullOrEmpty(driveLetter) &&
+                        partSize > 0 && partSize <= 1024UL * 1024 * 1024 &&
+                        (fileSystem.Equals("FAT32", StringComparison.OrdinalIgnoreCase) ||
+                         fileSystem.Equals("FAT", StringComparison.OrdinalIgnoreCase) ||
+                         string.IsNullOrEmpty(fileSystem)))
+                    {
+                        protectedPartition = true;
                     }
 
                     diskInfo.Partitions.Add(new PartitionInfo
@@ -159,7 +330,7 @@ public static class DriveService
                         FileSystem = fileSystem,
                         Capacity = capacity,
                         FreeSpace = freeSpace,
-                        IsProtected = driveLetter.Equals(ProtectedDriveLetter, StringComparison.OrdinalIgnoreCase)
+                        IsProtected = protectedPartition
                     });
                 }
 
@@ -180,17 +351,17 @@ public static class DriveService
     public static Task<IReadOnlyList<DiskInfo>> GetDiskPartitionLayoutAsync(CancellationToken cancellationToken = default)
         => Task.Run(GetDiskPartitionLayout, cancellationToken);
 
-    /// <summary>Builds a map of drive letter to volume label, file system, capacity, and free space from Win32_Volume.</summary>
-    private static Dictionary<string, (string Label, string FileSystem, ulong Capacity, ulong FreeSpace)> GetVolumeInfoByDriveLetter()
+    /// <summary>Builds a map of drive letter to volume metadata from Win32_Volume.</summary>
+    private static Dictionary<string, (string Label, string FileSystem, ulong Capacity, ulong FreeSpace, bool? BootVolume, bool? SystemVolume)> GetVolumeInfoByDriveLetter()
     {
-        var map = new Dictionary<string, (string, string, ulong, ulong)>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, (string, string, ulong, ulong, bool?, bool?)>(StringComparer.OrdinalIgnoreCase);
         try
         {
             using var searcher = new ManagementObjectSearcher(
-                "SELECT DriveLetter, Label, FileSystem, Capacity, FreeSpace FROM Win32_Volume WHERE DriveLetter IS NOT NULL");
+                "SELECT DriveLetter, Label, FileSystem, Capacity, FreeSpace, BootVolume, SystemVolume FROM Win32_Volume WHERE DriveLetter IS NOT NULL");
             foreach (ManagementBaseObject obj in searcher.Get())
             {
-                var letter = obj["DriveLetter"]?.ToString()?.Trim().ToUpperInvariant();
+                var letter = NormalizeLetter(obj["DriveLetter"]?.ToString());
                 if (string.IsNullOrEmpty(letter))
                 {
                     continue;
@@ -200,7 +371,9 @@ public static class DriveService
                     obj["Label"]?.ToString() ?? string.Empty,
                     obj["FileSystem"]?.ToString() ?? string.Empty,
                     obj["Capacity"] != null ? Convert.ToUInt64(obj["Capacity"]) : 0,
-                    obj["FreeSpace"] != null ? Convert.ToUInt64(obj["FreeSpace"]) : 0);
+                    obj["FreeSpace"] != null ? Convert.ToUInt64(obj["FreeSpace"]) : 0,
+                    obj["BootVolume"] as bool?,
+                    obj["SystemVolume"] as bool?);
             }
         }
         catch { /* ignore */ }
@@ -208,12 +381,11 @@ public static class DriveService
     }
 
     /// <summary>
-    /// Securely wipes free space on the volume by overwriting it with cryptographically random data multiple times.
-    /// Call this before <see cref="FormatAsync"/> for "secure deletion" (e.g. Military grade = 7 passes).
-    /// Does not allow wiping the protected drive (C:).
+    /// Overwrites free space on the volume with cryptographically random data (multiple passes), then the caller typically formats.
+    /// This is not full-disk Secure Erase or NVMe Sanitize. Does not allow wiping protected volumes.
     /// </summary>
     /// <param name="driveLetter">Drive letter with or without colon (e.g. "D" or "D:").</param>
-    /// <param name="passes">Number of overwrite passes (e.g. 7 for Military grade).</param>
+    /// <param name="passes">Number of free-space overwrite passes.</param>
     /// <param name="progress">Optional progress (pass number, total passes, percent 0–100).</param>
     /// <param name="cancellationToken">Optional cancellation.</param>
     /// <returns>True if wipe completed; false if drive is protected or error.</returns>
@@ -223,13 +395,8 @@ public static class DriveService
         IProgress<(int pass, int totalPasses, double percent)>? progress,
         CancellationToken cancellationToken = default)
     {
-        var letter = driveLetter.Trim().ToUpperInvariant();
-        if (!letter.EndsWith(':'))
-        {
-            letter += ":";
-        }
-
-        if (letter.Equals(ProtectedDriveLetter, StringComparison.Ordinal))
+        var letter = NormalizeLetter(driveLetter);
+        if (string.IsNullOrEmpty(letter) || IsProtectedDriveLetter(letter))
         {
             return false;
         }
@@ -311,10 +478,11 @@ public static class DriveService
 
     /// <summary>
     /// Formats the given volume via WMI Win32_Volume.Format.
-    /// Does not allow formatting the protected drive (C:).
+    /// Does not allow formatting protected system/boot/EFI/recovery volumes.
+    /// Rejects file systems that are not natively supported on stock Windows.
     /// </summary>
     /// <param name="driveLetter">Drive letter with or without colon (e.g. "D" or "D:").</param>
-    /// <param name="fileSystem">File system (e.g. NTFS, FAT32, exFAT, ReFS, ext4, APFS, HFS+).</param>
+    /// <param name="fileSystem">File system (e.g. NTFS, FAT32, exFAT, ReFS).</param>
     /// <param name="quickFormat">True to quick format (no bad sector scan).</param>
     /// <param name="clusterSize">Allocation unit size in bytes; 0 to use default.</param>
     /// <param name="volumeLabel">Volume label (optional).</param>
@@ -330,15 +498,16 @@ public static class DriveService
         bool enableCompression,
         CancellationToken cancellationToken = default)
     {
-        var letter = driveLetter.Trim().ToUpperInvariant();
-        if (!letter.EndsWith(':'))
-        {
-            letter += ":";
-        }
-
-        if (letter.Equals(ProtectedDriveLetter, StringComparison.Ordinal))
+        var letter = NormalizeLetter(driveLetter);
+        if (string.IsNullOrEmpty(letter) || IsProtectedDriveLetter(letter))
         {
             return 3; // Access denied
+        }
+
+        if (!FormatFileSystems.Any(f => f.IsNativelySupported &&
+            f.Name.Equals(fileSystem, StringComparison.OrdinalIgnoreCase)))
+        {
+            return 1; // Unsupported file system
         }
 
         uint result = 18; // Unknown error

@@ -16,10 +16,23 @@ public sealed partial class MainWindow : Window
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
         TrySetWindowSize(1400, 800);
+        ConfigureElevationBanner();
         LoadDrives();
         Treemap.RevealInExplorerRequested += Treemap_RevealInExplorerRequested;
         Treemap.FileInfoRequested += Treemap_FileInfoRequested;
         TreemapScrollViewer.PointerWheelChanged += TreemapScrollViewer_PointerWheelChanged;
+    }
+
+    private void ConfigureElevationBanner()
+    {
+        ElevationUi.StyleWarningBanner(ElevationBanner);
+        ElevationUi.ConfigureBanner(
+            ElevationBanner,
+            ElevationBannerText,
+            "Not running as Administrator. Some system folders may be skipped during scans.",
+            RestartAsAdminButton,
+            null,
+            "Restart as Administrator to scan protected folders with fewer access errors.");
     }
 
     private void TrySetMicaBackdrop()

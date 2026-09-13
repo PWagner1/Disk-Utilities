@@ -11,6 +11,7 @@ global using System.Runtime.InteropServices;
 global using System.Threading.Tasks;
 global using DiskHealth.Models;
 global using DiskHealth.Services;
+global using DiskUtilities.Shared;
 global using Microsoft.UI.Composition.SystemBackdrops;
 global using Microsoft.UI.Xaml;
 global using Microsoft.UI.Xaml.Controls;

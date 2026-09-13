@@ -30,13 +30,17 @@ public sealed class PartitionInfo
     /// <summary>Free space in bytes (from volume); 0 if not available.</summary>
     public ulong FreeSpace { get; set; }
 
-    /// <summary>True if this is the protected system drive (C:).</summary>
+    /// <summary>True if this is a protected system/boot/EFI/recovery volume.</summary>
     public bool IsProtected { get; set; }
 
-    /// <summary>Short display label for the partition block (e.g. "C: System").</summary>
+    /// <summary>Short display label for the partition block (e.g. "C: (System)").</summary>
     public string DisplayLabel => string.IsNullOrEmpty(DriveLetter)
-        ? "No letter"
-        : (IsProtected ? $"{DriveLetter} (System)" : string.IsNullOrWhiteSpace(Label) ? DriveLetter : $"{DriveLetter} ({Label})");
+        ? (IsProtected ? "No letter (protected)" : "No letter")
+        : IsProtected
+            ? (DriveLetter.Equals("C:", StringComparison.OrdinalIgnoreCase)
+                ? $"{DriveLetter} (System)"
+                : $"{DriveLetter} (Protected)")
+            : (string.IsNullOrWhiteSpace(Label) ? DriveLetter : $"{DriveLetter} ({Label})");
 
     /// <summary>Formatted size string (e.g. "100 GB").</summary>
     public string FormattedSize => FormatBytes(Size);

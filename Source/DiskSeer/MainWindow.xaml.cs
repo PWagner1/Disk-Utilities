@@ -36,8 +36,22 @@ public sealed partial class MainWindow : Window
         var appWindow = AppWindow.GetFromWindowId(windowId);
         appWindow.Resize(new Windows.Graphics.SizeInt32(1400, 900));
 
+        ConfigureElevationBanner();
+
         // Initial drive refresh
         RefreshDrives();
+    }
+
+    private void ConfigureElevationBanner()
+    {
+        ElevationUi.StyleWarningBanner(ElevationBanner);
+        ElevationUi.ConfigureBanner(
+            ElevationBanner,
+            ElevationBannerText,
+            "Not running as Administrator. DiskSeer needs elevation for raw disk access to foreign file systems.",
+            RestartAsAdminButton,
+            null,
+            "Browsing Apple and Linux volumes needs Administrator rights for raw disk access.");
     }
 
     private void TrySetMicaBackdrop()
@@ -90,7 +104,9 @@ public sealed partial class MainWindow : Window
 
                 StatusText.Text = _drives.Count > 0
                     ? $"Found {_drives.Count} physical drive{(_drives.Count != 1 ? "s" : "")}"
-                    : "No drives found. Ensure you're running as administrator.";
+                    : ElevationHelper.IsElevated
+                        ? "No drives found."
+                        : "No drives found. Restart as Administrator — raw disk access requires elevation.";
             });
         }
         catch (OperationCanceledException)

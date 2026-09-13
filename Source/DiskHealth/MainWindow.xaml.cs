@@ -13,7 +13,20 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         TrySetMicaBackdrop();
         TrySetExtendedTitleBar();
+        ConfigureElevationBanner();
         LoadDrives();
+    }
+
+    private void ConfigureElevationBanner()
+    {
+        ElevationUi.StyleWarningBanner(ElevationBanner);
+        ElevationUi.ConfigureBanner(
+            ElevationBanner,
+            ElevationBannerText,
+            "Not running as Administrator. Signature carving and recovery need raw disk access.",
+            RestartAsAdminButton,
+            null,
+            "Scanning and recovering files need Administrator rights for raw volume access.");
     }
 
     /// <summary>Applies Mica backdrop on Windows 11; no-op on older Windows.</summary>
@@ -77,6 +90,18 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (!ElevationHelper.IsElevated && Content?.XamlRoot is { } elevRoot)
+        {
+            bool abort = await ElevationUi.EnsureElevatedOrAbortAsync(
+                elevRoot,
+                "Signature carving needs Administrator rights for raw volume access.",
+                requireElevation: true).ConfigureAwait(true);
+            if (abort)
+            {
+                return;
+            }
+        }
+
         _scanCts?.Cancel();
         _scanCts = new CancellationTokenSource();
         var ct = _scanCts.Token;
@@ -85,13 +110,13 @@ public sealed partial class MainWindow : Window
         ProgressBar.Visibility = Visibility.Visible;
         ProgressBar.IsIndeterminate = true;
         StatusText.Visibility = Visibility.Visible;
-        StatusText.Text = "Scanning drive for recoverable files...";
+        StatusText.Text = "Carving drive for known file signatures...";
         _files.Clear();
         FileListView.ItemsSource = null;
 
         var progress = new Progress<(long BytesScanned, int FileCount)>(p =>
         {
-            StatusText.Text = $"Scanned {p.BytesScanned / (1024 * 1024)} MB, found {p.FileCount} files...";
+            StatusText.Text = $"Carved {p.BytesScanned / (1024 * 1024)} MB, found {p.FileCount} candidates...";
         });
 
         try
@@ -103,7 +128,7 @@ public sealed partial class MainWindow : Window
             }
 
             FileListView.ItemsSource = _files;
-            FileCountText.Text = $"{_files.Count} files found";
+            FileCountText.Text = $"{_files.Count} candidates found";
             SelectAllCheck.IsChecked = true;
         }
         catch (OperationCanceledException)
@@ -112,7 +137,16 @@ public sealed partial class MainWindow : Window
         }
         catch (UnauthorizedAccessException)
         {
-            await ShowMessageAsync("Administrator privileges are required to scan drives. Please run the application as administrator.");
+            if (Content?.XamlRoot is { } root && !ElevationHelper.IsElevated)
+            {
+                await ElevationUi.PromptAndRelaunchAsync(
+                    root,
+                    "Administrator privileges are required to scan drives.").ConfigureAwait(true);
+            }
+            else
+            {
+                await ShowMessageAsync("Administrator privileges are required to scan drives. Please run the application as administrator.");
+            }
         }
         catch (Exception ex)
         {
@@ -124,11 +158,11 @@ public sealed partial class MainWindow : Window
             ProgressBar.Visibility = Visibility.Collapsed;
             if (_files.Count == 0)
             {
-                StatusText.Text = "Scan complete. No recoverable files found.";
+                StatusText.Text = "Carve complete. No signature candidates found.";
             }
             else
             {
-                StatusText.Text = $"Scan complete. Found {_files.Count} potentially recoverable files.";
+                StatusText.Text = $"Carve complete. Found {_files.Count} signature candidates (chance scores are heuristic).";
             }
         }
     }
@@ -184,6 +218,18 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (!ElevationHelper.IsElevated && Content?.XamlRoot is { } elevRoot)
+        {
+            bool abort = await ElevationUi.EnsureElevatedOrAbortAsync(
+                elevRoot,
+                "Recovering carved files needs Administrator rights for raw volume access.",
+                requireElevation: true).ConfigureAwait(true);
+            if (abort)
+            {
+                return;
+            }
+        }
+
         _recoverCts?.Cancel();
         _recoverCts = new CancellationTokenSource();
         var ct = _recoverCts.Token;
@@ -211,7 +257,16 @@ public sealed partial class MainWindow : Window
         }
         catch (UnauthorizedAccessException)
         {
-            await ShowMessageAsync("Administrator privileges are required. Please run as administrator.");
+            if (Content?.XamlRoot is { } root && !ElevationHelper.IsElevated)
+            {
+                await ElevationUi.PromptAndRelaunchAsync(
+                    root,
+                    "Administrator privileges are required to recover files from raw volumes.").ConfigureAwait(true);
+            }
+            else
+            {
+                await ShowMessageAsync("Administrator privileges are required. Please run as administrator.");
+            }
         }
         catch (Exception ex)
         {

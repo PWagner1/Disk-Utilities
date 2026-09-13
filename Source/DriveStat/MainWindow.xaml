@@ -20,15 +20,27 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0" Spacing="4">
+            <Border x:Name="ElevationBanner" Grid.Row="0" Visibility="Collapsed" Margin="0,0,0,4">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ElevationBannerText" Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <Button x:Name="RestartAsAdminButton" Grid.Column="1" Content="Restart as administrator" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Spacing="4">
                 <TextBlock Text="Select a drive or folder to analyze disk usage. The treemap shows file sizes at a glance."
                            TextWrapping="Wrap" Opacity="0.8" />
             </StackPanel>
 
-            <StackPanel Grid.Row="1" Spacing="8">
+            <StackPanel Grid.Row="2" Spacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <ComboBox x:Name="DriveCombo"
                               PlaceholderText="Select drive or folder..."
@@ -43,7 +55,7 @@
                 <TextBlock x:Name="StatusText" Text="" TextWrapping="Wrap" Opacity="0.8" />
             </StackPanel>
 
-            <Grid Grid.Row="2" ColumnSpacing="12" MinHeight="300">
+            <Grid Grid.Row="3" ColumnSpacing="12" MinHeight="300">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="250" MinWidth="150" MaxWidth="400" />
                     <ColumnDefinition Width="*" MinWidth="200" />

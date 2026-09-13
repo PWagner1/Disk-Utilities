@@ -61,6 +61,21 @@ public static class CliRunner
             }
         }
 
+        if (!ElevationHelper.IsElevated)
+        {
+            AllocConsole();
+            try
+            {
+                Console.Error.WriteLine("HandleFinder CLI requires Administrator privileges to enumerate handles.");
+                Console.Error.WriteLine("Right-click and Run as administrator, or relaunch from an elevated prompt.");
+                return 5;
+            }
+            finally
+            {
+                FreeConsole();
+            }
+        }
+
         // Normalize drive-only paths
         for (var i = 0; i < paths.Count; i++)
         {

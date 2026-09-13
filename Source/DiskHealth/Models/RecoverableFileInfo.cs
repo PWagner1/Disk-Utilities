@@ -14,12 +14,12 @@ public class RecoverableFileInfo : INotifyPropertyChanged
     /// <summary>Estimated size in bytes (0 if unknown).</summary>
     public long EstimatedSize { get; set; }
 
-    /// <summary>Recovery probability: 0–100 (High=80+, Medium=50–79, Low=&lt;50).</summary>
+    /// <summary>Heuristic recovery estimate: 0–100 (High=80+, Medium=50–79, Low=&lt;50). Not a guarantee.</summary>
     public int RecoveryChancePercent { get; set; }
 
-    /// <summary>Human-readable recovery chance (High, Medium, Low).</summary>
-    public string RecoveryChanceLabel => RecoveryChancePercent >= 80 ? "High"
-        : RecoveryChancePercent >= 50 ? "Medium" : "Low";
+    /// <summary>Human-readable heuristic recovery chance.</summary>
+    public string RecoveryChanceLabel => RecoveryChancePercent >= 80 ? "High (est.)"
+        : RecoveryChancePercent >= 50 ? "Medium (est.)" : "Low (est.)";
 
     /// <summary>Starting offset on disk (for recovery service).</summary>
     public long Offset { get; set; }

@@ -58,7 +58,7 @@ When Windows reports that a file or folder cannot be deleted, renamed, or moved 
 | **OS** | Windows 10 (19041+) or Windows 11 |
 | **Architecture** | x64, x86, or ARM64 |
 | **Privileges** | Administrator (required for handle enumeration) |
-| **Build** | .NET 8 SDK or later; Visual Studio 2022 with Windows App SDK workload |
+| **Build** | .NET 10 SDK; Visual Studio 2022 with Windows App SDK workload (Windows App SDK 2.x via NuGet) |
 
 ---
 
@@ -81,7 +81,8 @@ dotnet build HandleFinder\HandleFinder.csproj -c Debug -p:Platform=x64
 Run the executable:
 
 ```powershell
-.\HandleFinder\bin\x64\Debug\net8.0-windows10.0.19041.0\HandleFinder.exe
+# From repo root (BaseOutputPath writes under bin\)
+.\bin\x64\Debug\net10.0-windows10.0.19041.0\HandleFinder.exe
 ```
 
 > **Important**: Always run as Administrator. Right-click the executable and choose "Run as administrator," or use an elevated command prompt.

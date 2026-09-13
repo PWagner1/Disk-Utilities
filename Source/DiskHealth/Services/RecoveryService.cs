@@ -69,8 +69,8 @@ public static class RecoveryService
     }
 
     /// <summary>
-    /// Scans a drive for potentially recoverable files by searching for known file signatures.
-    /// Requires elevated privileges for raw volume access.
+    /// Scans a drive for potentially recoverable files by searching for known file signatures (carving).
+    /// This is not NTFS MFT or Recycle Bin undelete. Requires elevated privileges for raw volume access.
     /// </summary>
     /// <param name="driveLetter">Drive letter (e.g. "D" or "D:")</param>
     /// <param name="progress">Optional progress reporter (bytes scanned, current file count)</param>
@@ -356,9 +356,12 @@ public static class RecoveryService
         return true;
     }
 
+    /// <summary>
+    /// Heuristic recovery-chance estimate only. Does not inspect overwrite status or filesystem metadata.
+    /// </summary>
     private static int EstimateRecoveryChance()
     {
-        // Simplified: random-ish distribution. Real impl would check overwrite status.
+        // Placeholder distribution until signature/footer validation can drive a better estimate.
         var r = Random.Shared;
         int x = r.Next(100);
         if (x < 40)

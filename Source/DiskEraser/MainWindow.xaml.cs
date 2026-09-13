@@ -2,7 +2,7 @@ namespace DiskEraser;
 
 /// <summary>
 /// Main window for the Disk Eraser app: lists formattable drives, format options, and runs format via <see cref="DriveService"/>.
-/// The system drive (C:) is never shown and cannot be formatted.
+/// Protected system/boot/EFI/recovery volumes cannot be formatted.
 /// </summary>
 public sealed partial class MainWindow : Window
 {
@@ -34,10 +34,23 @@ public sealed partial class MainWindow : Window
         LoadClusterSizePresets();
         LoadSecureWipePresets();
         SetDriveLayoutContextMenu();
+        ConfigureElevationBanner();
         _ = LoadDrivesAndDiagramAsync();
         SecureDeletionCheck.Checked += (_, _) => UpdateSecureWipePresetState();
         SecureDeletionCheck.Unchecked += (_, _) => UpdateSecureWipePresetState();
         UpdateSecureWipePresetState();
+    }
+
+    private void ConfigureElevationBanner()
+    {
+        ElevationUi.StyleWarningBanner(ElevationBanner);
+        ElevationUi.ConfigureBanner(
+            ElevationBanner,
+            ElevationBannerText,
+            "Not running as Administrator. Format, wipe, and partition changes may fail with access errors.",
+            RestartAsAdminButton,
+            null,
+            "Format, free-space overwrite, and partition management need Administrator rights.");
     }
 
     /// <summary>Applies Mica backdrop on Windows 11; no-op or fallback on older Windows.</summary>
@@ -129,7 +142,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Populates the secure wipe preset combo (1 pass, DoD 3-pass, Military grade 7-pass).</summary>
+    /// <summary>Populates the free-space overwrite preset combo.</summary>
     private void LoadSecureWipePresets()
     {
         SecureWipePresetCombo.Items.Clear();
@@ -149,17 +162,35 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Populates the file system combo with all supported file systems.</summary>
+    /// <summary>Populates the file system combo; non-native options are disabled.</summary>
     private void LoadFileSystems()
     {
         FileSystemCombo.Items.Clear();
-        foreach (string fs in DriveService.SupportedFileSystems)
+        foreach (var option in DriveService.FormatFileSystems)
         {
-            FileSystemCombo.Items.Add(fs);
+            var item = new ComboBoxItem
+            {
+                Content = option.IsNativelySupported
+                    ? option.Name
+                    : $"{option.Name} (not supported on Windows)",
+                IsEnabled = option.IsNativelySupported,
+                Tag = option.Name
+            };
+            FileSystemCombo.Items.Add(item);
         }
 
         FileSystemCombo.SelectedIndex = 0;
         UpdateCompressionCheckState();
+    }
+
+    private static string? GetSelectedFileSystemName(ComboBox? combo)
+    {
+        if (combo?.SelectedItem is ComboBoxItem item)
+        {
+            return item.Tag as string ?? item.Content?.ToString();
+        }
+
+        return combo?.SelectedItem?.ToString();
     }
 
     /// <summary>Enables compression checkbox only when a file system that supports it (NTFS, ReFS) is selected.</summary>
@@ -170,7 +201,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        string? fs = FileSystemCombo?.SelectedItem?.ToString();
+        string? fs = GetSelectedFileSystemName(FileSystemCombo);
         bool supported = fs is "NTFS" or "ReFS";
         CompressionCheck.IsEnabled = supported;
         if (!supported && CompressionCheck.IsChecked == true)
@@ -225,14 +256,18 @@ public sealed partial class MainWindow : Window
             }
             else
             {
-                DriveCombo.PlaceholderText = "No other drives found (C: is protected).";
+                DriveCombo.PlaceholderText = "No formattable drives found (protected volumes excluded).";
+                if (!ElevationHelper.IsElevated)
+                {
+                    ShowStatus("No drives listed. If this looks wrong, restart as Administrator — WMI enumeration can fail without elevation.", isError: true);
+                }
             }
 
             BuildDiagram(disks);
         });
     }
 
-    /// <summary>Refreshes the list of formattable drives (excluding C:) and updates the drive combo.</summary>
+    /// <summary>Refreshes the list of formattable drives (excluding protected volumes) and updates the drive combo.</summary>
     private void RefreshDrives()
     {
         _drives = DriveService.GetFormattableDrives();
@@ -248,7 +283,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            DriveCombo.PlaceholderText = "No other drives found (C: is protected).";
+            DriveCombo.PlaceholderText = "No formattable drives found (protected volumes excluded).";
         }
     }
 
@@ -279,7 +314,9 @@ public sealed partial class MainWindow : Window
     {
         var message = $"You are about to format drive {driveLetter} as {fileSystem}.\n\n"
             + "All data on this drive will be permanently erased. This cannot be undone."
-            + (secureDeletion ? $"\n\nSecure deletion ({wipePasses} pass(es)) will run first." : "");
+            + (secureDeletion
+                ? $"\n\nFree-space overwrite ({wipePasses} pass(es)) will run first. This overwrites unused space only — it is not hardware Secure Erase / NVMe Sanitize."
+                : "");
 
         var confirmCheckBox = new CheckBox
         {
@@ -652,6 +689,18 @@ public sealed partial class MainWindow : Window
 
     private async void FormatButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!ElevationHelper.IsElevated && Content?.XamlRoot is { } root)
+        {
+            bool abort = await ElevationUi.EnsureElevatedOrAbortAsync(
+                root,
+                "Format and free-space overwrite need Administrator rights.",
+                requireElevation: true).ConfigureAwait(true);
+            if (abort)
+            {
+                return;
+            }
+        }
+
         string driveLetter = NormalizeDriveLetter(DriveLetterBox?.Text?.Trim());
         if (string.IsNullOrEmpty(driveLetter))
         {
@@ -666,13 +715,20 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        if (driveLetter.Equals(DriveService.ProtectedDriveLetter, StringComparison.Ordinal))
+        if (DriveService.IsProtectedDriveLetter(driveLetter))
         {
-            ShowStatus("The system drive (C:) cannot be formatted.", isError: true);
+            ShowStatus("Protected volumes (system, boot, EFI, recovery) cannot be formatted.", isError: true);
             return;
         }
 
-        string fileSystem = FileSystemCombo.SelectedItem?.ToString() ?? "NTFS";
+        string fileSystem = GetSelectedFileSystemName(FileSystemCombo) ?? "NTFS";
+        if (!DriveService.FormatFileSystems.Any(f => f.IsNativelySupported &&
+            f.Name.Equals(fileSystem, StringComparison.OrdinalIgnoreCase)))
+        {
+            ShowStatus("Select a Windows-supported file system (NTFS, FAT32, FAT, exFAT, or ReFS).", isError: true);
+            return;
+        }
+
         string label = VolumeLabelBox?.Text?.Trim() ?? string.Empty;
         uint clusterSize = 0;
         if (!string.IsNullOrWhiteSpace(ClusterSizeBox?.Text) && uint.TryParse(ClusterSizeBox.Text.Trim(), out uint parsed))
@@ -712,7 +768,7 @@ public sealed partial class MainWindow : Window
 
                     if (ProgressLabel != null)
                     {
-                        ProgressLabel.Text = $"Secure wipe: pass {p.pass}/{p.totalPasses} ({p.percent:F0}%)";
+                        ProgressLabel.Text = $"Free-space overwrite: pass {p.pass}/{p.totalPasses} ({p.percent:F0}%)";
                         ProgressLabel.Visibility = Visibility.Visible;
                     }
                 });
@@ -725,7 +781,7 @@ public sealed partial class MainWindow : Window
 
                 if (!wiped)
                 {
-                    ShowStatus("Secure wipe failed or was skipped (e.g. protected drive).", isError: true);
+                    ShowStatus("Free-space overwrite failed or was skipped (e.g. protected drive).", isError: true);
                     return;
                 }
             }
@@ -734,7 +790,7 @@ public sealed partial class MainWindow : Window
             string message = DriveService.GetFormatResultMessage(result);
             if (result == 0)
             {
-                ShowStatus(secureDeletion ? "Secure wipe and format completed." : message, isError: false);
+                ShowStatus(secureDeletion ? "Free-space overwrite and format completed." : message, isError: false);
                 _ = LoadDrivesAndDiagramAsync();
             }
             else

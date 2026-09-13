@@ -19,16 +19,30 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0" Spacing="4">
-                <TextBlock Text="Scan a drive for recoverable files, view recovery chances, and recover selected files to a destination folder. Administrator privileges are required for scanning."
+            <Border x:Name="ElevationBanner" Grid.Row="0" Visibility="Collapsed" Margin="0,0,0,4">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ElevationBannerText" Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <Button x:Name="RestartAsAdminButton" Grid.Column="1" Content="Restart as administrator" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Spacing="4">
+                <TextBlock Text="Signature carving scans raw drive data for known file headers (JPEG, PNG, PDF, ZIP, Office, media, and more). This is not NTFS MFT or Recycle Bin undelete. Administrator privileges are required for scanning."
                            TextWrapping="Wrap" Opacity="0.8" />
+                <TextBlock Text="Recovery chance is a heuristic estimate only — carved files may be incomplete, false positives, or overwritten."
+                           TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
             </StackPanel>
 
-            <StackPanel Grid.Row="1" Spacing="8">
+            <StackPanel Grid.Row="2" Spacing="8">
                 <TextBlock Text="Drive" FontWeight="SemiBold" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ComboBox x:Name="DriveCombo"
@@ -36,11 +50,11 @@
                               DisplayMemberPath="DisplayText"
                               Width="280"
                               SelectionChanged="DriveCombo_SelectionChanged" />
-                    <Button x:Name="ScanButton" Content="Scan for recoverable files" Click="ScanButton_Click" />
+                    <Button x:Name="ScanButton" Content="Carve for file signatures" Click="ScanButton_Click" />
                 </StackPanel>
             </StackPanel>
 
-            <StackPanel Grid.Row="2" Spacing="8">
+            <StackPanel Grid.Row="3" Spacing="8">
                 <TextBlock Text="Recovery destination" FontWeight="SemiBold" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBox x:Name="DestinationBox"
@@ -51,16 +65,17 @@
                 </StackPanel>
             </StackPanel>
 
-            <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" Padding="12" CornerRadius="4">
+            <Border Grid.Row="4" BorderBrush="Gray" BorderThickness="1" Padding="12" CornerRadius="4">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
-                        <TextBlock Text="Recoverable files" FontWeight="SemiBold" />
+                        <TextBlock Text="Carved candidates" FontWeight="SemiBold" />
                         <CheckBox x:Name="SelectAllCheck" Content="Select all" IsChecked="True" Checked="SelectAllCheck_Changed" Unchecked="SelectAllCheck_Changed" />
                         <TextBlock x:Name="FileCountText" Text="0 files found" Opacity="0.8" VerticalAlignment="Center" />
+                        <TextBlock Text="Chance = heuristic" Opacity="0.7" FontSize="12" VerticalAlignment="Center" />
                     </StackPanel>
                     <ListView Grid.Row="1"
                               x:Name="FileListView"
@@ -92,7 +107,7 @@
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="4" Spacing="8">
+            <StackPanel Grid.Row="5" Spacing="8">
                 <ProgressBar x:Name="ProgressBar" IsIndeterminate="True" Visibility="Collapsed" Value="0" Minimum="0" Maximum="100" />
                 <TextBlock x:Name="StatusText" Text="" TextWrapping="Wrap" Visibility="Collapsed" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
