@@ -1,38 +1,27 @@
-# DiskHealth
+# Disk Health
 
-WinUI 3 tool for **signature-based file recovery** (carving) and **S.M.A.R.T. drive health**. Part of the [Disk Utilities](../../README.md) suite.
+WinUI 3 tool for **signature carving** recovery and **S.M.A.R.T. / NVMe** drive health.
 
 ## Features
 
-- Carve a volume for known file signatures
-- List candidates with type and a **heuristic** recovery chance estimate
-- Recover selected files to a folder you choose
-- **S.M.A.R.T.** window: failure prediction and attribute tables (strongest on ATA/SATA)
+- **Signature carving** — Scans raw volume data for known headers (JPEG, PNG, PDF, GIF, ZIP/Office XML, 7z, RAR, WebP, HEIC, SQLite, PE, ISO, MKV, FLAC, MP4, and more). Kept as its own recovery mode.
+- **Recycle Bin undelete** — Lists `$Recycle.Bin` `$I`/`$R` pairs and restores the `$R` payload with the original name
+- **MFT deleted (scoped)** — Scans NTFS Master File Table for unused FILE records with residual names/data runs (clusters may already be reused)
+- **Optional volume image** — Read-only raw `.img`/`.dd` copy (first 8 GB or entire volume) before scanning
+- **Quick vs deep carve** — Quick limits to the first 8 GB; deep scans the full volume
+- **Pause / resume / cancel** — Control long carves without losing progress so far
+- **Type filter & preview** — Filter candidates by extension; preview images and PDF headers before recover
+- **Export** — Save the candidate list as CSV or JSON
+- **S.M.A.R.T. stats** — ATA attributes via WMI; NVMe Health Information Log (temperature, available spare, percentage used)
 
-## How recovery works (expectations)
+## Safety
 
-DiskHealth searches raw volume data for magic bytes / headers, for example:
+- Administrator rights are required for carve, MFT, and volume imaging (Recycle Bin restore usually works without raw IO)
+- The UI labels each candidate as **Carve**, **Recycle Bin**, or **MFT deleted** — do not treat carving as undelete
+- Recovery chance scores are **heuristic estimates**, not guarantees
+- Carved / MFT results may be incomplete, false positives, or partially overwritten; Recycle Bin restores are the most reliable when `$R` still exists
 
-JPEG, PNG, PDF, GIF, ZIP, Office Open XML, BMP, MP3, MP4 (ftyp), WAV
-
-This is **carving**, not NTFS MFT or Recycle Bin undelete. Results may include false positives; “chance” scores are heuristics, not guarantees. Fragmented or overwritten files may not recover cleanly.
-
-Admin rights are typically required to open the volume for raw scanning.
-
-## S.M.A.R.T. notes
-
-- Uses WMI (`MSStorageDriver_FailurePredictStatus`, `MSStorageDriver_ATAPISmartData`, etc.)
-- Detailed attribute tables apply mainly to ATA/SATA
-- NVMe drives often show health / failure-predict status only
-
-## Requirements
-
-- Windows 10 (19041+) or Windows 11
-- .NET 10 / Windows App SDK 2.x
-- Administrator recommended for scan/recover
-- Platform: x64, x86, or ARM64 (not AnyCPU)
-
-## Build and run
+## Building
 
 ```powershell
 cd Source
@@ -40,26 +29,9 @@ dotnet build DiskHealth\DiskHealth.csproj -c Debug -p:Platform=x64
 dotnet run --project DiskHealth -p:Platform=x64
 ```
 
-Or open `Source/Disk Utilities.sln`, set **DiskHealth** as startup, platform **x64**, and press F5.
-
-Executable output (repo root):
-
-`bin\x64\Debug\net10.0-windows10.0.19041.0\DiskHealth.exe`
-
-## Usage tips
-
-1. Prefer a healthy destination drive for recovered files (not the same volume you are scanning when possible).
-2. Stop writing to a failing or accidentally wiped volume before scanning.
-3. Review candidates and recover selectively; carving can produce many hits.
-4. Use the S.M.A.R.T. window to check drive health separately from recovery.
-
-## Safety
-
-- Recovery reads raw disks; run as Administrator when prompted ops fail
-- Do not treat this as a substitute for backups or professional forensics
-- S.M.A.R.T. warnings are advisory — back up and replace drives that predict failure
+Executable: `bin\x64\Debug\net10.0-windows10.0.19041.0\DiskHealth.exe` (repo root).
 
 ## Related
 
 - Suite overview: [Source/README.md](../README.md)
-- Improvement tracking: [IMPROVEMENTS.md](../../IMPROVEMENTS.md)
+- Root README: [Disk Utilities](../../README.md)

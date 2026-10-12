@@ -13,6 +13,16 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         var cmdArgs = Environment.GetCommandLineArgs().Skip(1).ToArray();
+
+        // Suite / Explorer cross-link: open GUI with optional path (does not enter CLI mode).
+        if (cmdArgs.Any(a => a is "--gui" or "-g"))
+        {
+            string? path = cmdArgs.FirstOrDefault(a => a is not ("--gui" or "-g") && !a.StartsWith('-'));
+            _mainWindow = new MainWindow(path);
+            _mainWindow.Activate();
+            return;
+        }
+
         if (cmdArgs.Length > 0)
         {
             var exitCode = await CliRunner.RunAsync(cmdArgs);
@@ -21,23 +31,8 @@ public partial class App : Application
         }
 
         _mainWindow = new MainWindow();
-        ApplyMicaBackdrop(_mainWindow);
+        // Mica applied in MainWindow via WindowChrome
         _mainWindow.Activate();
-    }
-
-    private static void ApplyMicaBackdrop(Window window)
-    {
-        try
-        {
-            if (MicaController.IsSupported())
-            {
-                window.SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-            }
-        }
-        catch
-        {
-            // Mica not supported
-        }
     }
 
     private MainWindow? _mainWindow;

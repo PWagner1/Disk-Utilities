@@ -4,6 +4,7 @@ A suite of **WinUI 3** desktop tools for disk management on Windows 10 (19041+) 
 
 | App | Purpose |
 |-----|---------|
+| **[SuiteLauncher](Source/SuiteLauncher/README.md)** | Launch the suite tools from one window (theme seed + elevation hints) |
 | **[DiskEraser](Source/DiskEraser/README.md)** | Format volumes and manage partitions (system drive `C:\` excluded from format) |
 | **[DiskHealth](Source/DiskHealth/README.md)** | Signature-based file recovery and S.M.A.R.T. drive health |
 | **[DiskSeer](Source/README.md#diskseer--foreign-file-systems)** | Browse and edit Apple/Linux file systems from Windows |
@@ -31,11 +32,14 @@ From the command line (from repo root):
 ```powershell
 cd Source
 dotnet build "Disk Utilities.sln" -c Debug -p:Platform=x64
-dotnet run --project DiskEraser -p:Platform=x64
-# or DiskHealth / DiskSeer / DriveStat / HandleFinder
+dotnet run --project SuiteLauncher -p:Platform=x64
+# or DiskEraser / DiskHealth / DiskSeer / DriveStat / HandleFinder
 ```
 
 Binaries are written under `bin\<platform>\<config>\net10.0-windows10.0.19041.0\` at the repo root.
+
+Tagged releases (`v*`) build a x64 zip (+ `SHA256SUMS.txt`) via `.github/workflows/release.yml`.  
+winget / Scoop / Chocolatey / optional Inno templates live in [`packaging/`](packaging/README.md).
 
 If the XamlCompiler step fails from the CLI, build and run from Visual Studio instead.
 

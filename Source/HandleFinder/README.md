@@ -42,11 +42,14 @@ When Windows reports that a file or folder cannot be deleted, renamed, or moved 
 | **File support** | Find handles to a specific file |
 | **Drive selector** | Quick-select from a dropdown of available drives |
 | **Browse** | Browse for a file or folder via the picker |
-| **Close handle** | Close the selected handle without terminating the process |
-| **End process** | Terminate the selected process (with confirmation) |
-| **Process details** | Process name, PID, handle type, and full path; expand rows for handle value and access rights |
+| **Close handle(s)** | Close selected handle(s) with a confirm per handle (multi-select) |
+| **End process** | Terminate the selected process (acknowledgement confirm) |
+| **Filters** | Filter results by process name, PID, or type (File / Other) |
+| **Watch until clear** | Re-scan every ~2s until no handles remain (GUI complement to `--wait`) |
+| **Process details** | Process name, PID, path; expand for handle value, type, and decoded access mask |
 | **Reload** | Re-scan the current path without re-entering it |
-| **CLI** | Command-line interface for automation and build scripts |
+| **CLI** | Command-line interface for automation and build scripts (`--gui` opens the window) |
+| **Explorer** | Optional context menu via SuiteLauncher (“What has this locked?”) |
 | **Cross-version** | Automatic fallback for different Windows ObjectTypeIndex values |
 
 ---
@@ -96,7 +99,7 @@ HandleFinder can run from the command line for automation and build scripts (ins
 | Command | Description |
 |---------|--------------|
 | `<path>` | **Required**. One or more file or directory paths to check. Multiple paths separated by spaces. |
-| `--kill`, `-k` | Terminate all processes locking the specified files. |
+| `--kill`, `-k` | Terminate all locking processes **with no confirmation** (scripting). Prefer the GUI acknowledgement flow when interactive. |
 | `--json`, `-j` | Output results in JSON format for parsing and automation. |
 | `--wait`, `-w` | Block until the specified files are released. Useful in build scripts. |
 | `--help`, `-h` | Display help and usage. |

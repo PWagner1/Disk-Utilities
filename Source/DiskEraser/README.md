@@ -6,9 +6,12 @@ WinUI 3 tool for **formatting volumes** and **managing partitions**. Part of the
 
 - List formattable volumes (system / boot / EFI / recovery volumes excluded)
 - Format with volume label, allocation unit size, quick format, and NTFS compression where supported
-- Optional **free-space overwrite** before format (1 / 3 / 7 pass presets)
+- Last-used format options (FS, label, allocation unit, quick format, overwrite preset) are restored on launch
+- Optional **free-space overwrite** before format (1 / 3 / 7 pass presets) with pass % and ETA
+- Separate wipe vs format progress in the status line
 - Partition layout diagram with configurable colors (Settings)
-- Partition management: create, delete, extend, shrink (via diskpart)
+- Partition management: create, delete, extend, shrink (via diskpart); failures show diskpart output; shrink/extend show a before/after size preview
+- Advanced (partition window): probe ATA/NVMe hardware-erase capabilities; NVMe Sanitize when advertised (gated, admin-only, protected disks refused). ATA Secure Erase is detected but not automated
 
 ## File systems
 
@@ -18,13 +21,11 @@ Formatting uses WMI `Win32_Volume.Format`. Linux and Apple choices need third-pa
 
 ## Free-space overwrite (what it actually does)
 
-When enabled, DiskEraser overwrites **free space** on the selected volume with random data for the chosen number of passes, then formats. It does **not** perform:
+When enabled, DiskEraser overwrites **free space** on the selected volume with random data for the chosen number of passes, then formats. It does **not** perform full-disk overwrite of allocated data without format.
 
-- Full-disk overwrite of allocated data without format
-- ATA Secure Erase
-- NVMe Sanitize / crypto-erase
+**Hardware erase** (Partition Management → Advanced) is separate: it probes ATA Secure Erase / NVMe Sanitize capabilities. NVMe Sanitize may be submitted when the controller advertises it; ATA Secure Erase is reported but not automated (passworded UNIT). Disks with protected volumes are refused. This is still **not** a DoD/military certification; remapped SSD cells may retain data.
 
-Pass presets describe overwrite **effort** only; they are not a DoD/military certification claim.
+Pass presets for free-space overwrite describe **effort** only; they are not a standards certification claim.
 
 ## Protected volumes
 

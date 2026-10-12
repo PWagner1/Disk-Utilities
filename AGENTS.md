@@ -8,6 +8,7 @@ Guidance for AI agents and contributors working in this repository.
 
 | App | Role |
 |-----|------|
+| **SuiteLauncher** | Suite entry point (launch tools, theme seed) |
 | **DiskEraser** | Format volumes and manage partitions |
 | **DiskHealth** | Signature-based file recovery + S.M.A.R.T. health |
 | **DiskSeer** | Browse/edit Apple and Linux file systems from Windows |
@@ -15,6 +16,7 @@ Guidance for AI agents and contributors working in this repository.
 | **HandleFinder** | Find which processes lock files/folders/drives (GUI + CLI) |
 
 Shared code lives in `Source/DiskUtilities.Shared/`. Solution: `Source/Disk Utilities.sln`.
+Build defaults (TFM, package versions, app output under repo `bin\`) live in `Source/Directory.Build.props`.
 
 Docs: root [README.md](README.md), [Source/README.md](Source/README.md), per-app READMEs, [CHANGELOG.md](CHANGELOG.md), [IMPROVEMENTS.md](IMPROVEMENTS.md).
 
@@ -29,11 +31,12 @@ Docs: root [README.md](README.md), [Source/README.md](Source/README.md), per-app
 
 ```powershell
 cd Source
-dotnet build "Disk Utilities.sln" -c Debug -p:Platform=x64
+dotnet build "Disk Utilities.sln" -c Debug -p:Platform=x64 -m:1
+dotnet test DiskUtilities.Tests -c Debug -p:Platform=x64 -m:1
 dotnet run --project DiskEraser -p:Platform=x64
 ```
 
-Binaries: `bin\<platform>\<config>\net10.0-windows10.0.19041.0\` at the repo root.
+Binaries: `bin\<platform>\<config>\net10.0-windows10.0.19041.0\` at the repo root. Prefer `-m:1` when building multiple WinUI apps (shared `bin\` `.xbf` race).
 
 Prefer Visual Studio if CLI XamlCompiler fails. Do not commit `obj/`, `.vs/`, or build outputs under `bin/`.
 
@@ -49,8 +52,8 @@ Prefer Visual Studio if CLI XamlCompiler fails. Do not commit `obj/`, `.vs/`, or
 
 These tools can destroy data. Agents must preserve and strengthen safety rails, never weaken them for convenience.
 
-- **DiskEraser**: never format protected volumes (C:, boot/system, EFI/recovery). Free-space overwrite = unused space fill before format only — not Secure Erase / NVMe Sanitize. Do not re-enable Linux/Apple format as working on stock Windows.
-- **DiskHealth**: recovery is **signature carving**, not NTFS MFT undelete. Keep “chance” labeled as a heuristic.
+- **DiskEraser**: never format protected volumes (C:, boot/system, EFI/recovery). Free-space overwrite = unused space fill before format only. Hardware erase (NVMe Sanitize) is capability-gated, admin-only, refuses disks with protected volumes, and must not claim certification; ATA Secure Erase stays detect-only (not automated). Do not re-enable Linux/Apple format as working on stock Windows.
+- **DiskHealth**: keep **Carve** vs **Recycle Bin** vs **MFT deleted** distinct; carving is not undelete. Keep “chance” labeled as a heuristic; do not claim full forensic undelete.
 - **DiskSeer**: requires admin and explicit partition selection; APFS browsing needs optional libfsapfs (read-only). Prefer read-only defaults on unfamiliar disks.
 - **HandleFinder**: closing handles / ending processes is destructive; keep confirmations. Prefer ending the locking app when documenting UX.
 - **DriveStat**: treat as analysis-first; do not add silent destructive actions.
@@ -67,7 +70,7 @@ These tools can destroy data. Agents must preserve and strengthen safety rails, 
 ## What to avoid
 
 - Expanding scope beyond the requested app or change
-- Empty `catch { }` that hides disk/admin failures — log or surface errors when touching those paths
+- Empty `catch { }` that hides disk/admin failures — use `AppLog` (or surface errors) when touching those paths; logs go to `%LocalAppData%\DiskUtilities\logs\`
 - Committing secrets, credentials, or local VS/cache junk
 - Creating commits or PRs unless the user explicitly asks
 

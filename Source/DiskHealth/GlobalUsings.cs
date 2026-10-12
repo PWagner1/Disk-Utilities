@@ -8,6 +8,8 @@ global using System.Linq;
 global using System.Management;
 global using System.Runtime.CompilerServices;
 global using System.Runtime.InteropServices;
+global using System.Text;
+global using System.Threading;
 global using System.Threading.Tasks;
 global using DiskHealth.Models;
 global using DiskHealth.Services;

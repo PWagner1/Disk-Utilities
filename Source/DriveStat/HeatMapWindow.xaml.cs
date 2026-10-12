@@ -24,8 +24,8 @@ public sealed partial class HeatMapWindow : Window
     {
         InitializeComponent();
         _root = root;
-        TrySetMicaBackdrop();
-        TrySetExtendedTitleBar();
+        WindowChrome.TryApplyMica(this);
+        WindowChrome.TryExtendTitleBar(this, AppTitleBar);
         Title = $"{root.Name} — 3D Heat Map";
         TitleText.Text = Title;
         SizeChanged += (_, _) => Render();
@@ -33,28 +33,6 @@ public sealed partial class HeatMapWindow : Window
         {
             contentRoot.Loaded += (_, _) => Render();
         }
-    }
-
-    private void TrySetMicaBackdrop()
-    {
-        try
-        {
-            if (MicaController.IsSupported())
-            {
-                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-            }
-        }
-        catch { }
-    }
-
-    private void TrySetExtendedTitleBar()
-    {
-        try
-        {
-            ExtendsContentIntoTitleBar = true;
-            SetTitleBar(AppTitleBar);
-        }
-        catch { }
     }
 
     private void HeatMapScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)

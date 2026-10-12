@@ -42,18 +42,32 @@
 
             <!-- Drive selection -->
             <StackPanel Grid.Row="1" Spacing="8">
-                <TextBlock Text="Read and modify drives formatted with Apple (HFS+) or Linux (ext2/3/4, Btrfs, XFS) file systems."
+                <TextBlock Text="Browse Apple (HFS+, APFS) and Linux (ext2/3/4, Btrfs, XFS) volumes. Prefer read-only on unfamiliar disks; DiscUtils writes are experimental."
                            TextWrapping="Wrap" Opacity="0.8" />
+                <Border x:Name="ApfsBanner" Visibility="Collapsed" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,4">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ApfsBannerText" Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button x:Name="ApfsOpenDocsButton" Grid.Column="1" Content="Open build docs" Click="ApfsOpenDocsButton_Click" VerticalAlignment="Center" />
+                        <Button x:Name="ApfsShowPathButton" Grid.Column="2" Content="Show DLL folder" Click="ApfsShowPathButton_Click" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ComboBox x:Name="DriveCombo"
                               PlaceholderText="Select a drive..."
-                              Width="350"
+                              Width="320"
                               SelectionChanged="DriveCombo_SelectionChanged" />
                     <ComboBox x:Name="PartitionCombo"
                               PlaceholderText="Select a partition..."
-                              Width="350"
+                              Width="320"
                               SelectionChanged="PartitionCombo_SelectionChanged"
                               IsEnabled="False" />
+                    <ToggleSwitch x:Name="ReadOnlyToggle" Header="Read-only" IsOn="True" OffContent="Off" OnContent="On"
+                                  Toggled="ReadOnlyToggle_Toggled" />
                     <Button x:Name="RefreshDrivesButton" Content="Refresh" Click="RefreshDrivesButton_Click">
                         <Button.KeyboardAccelerators>
                             <KeyboardAccelerator Key="F5" />
@@ -61,6 +75,7 @@
                     </Button>
                     <Button x:Name="OpenPartitionButton" Content="Open" Click="OpenPartitionButton_Click" IsEnabled="False" />
                 </StackPanel>
+                <TextBlock x:Name="CapabilityText" Text="" Opacity="0.75" TextWrapping="Wrap" FontSize="12" />
             </StackPanel>
 
             <!-- Navigation bar -->
@@ -117,8 +132,14 @@
                     </ItemsRepeater>
                 </ScrollViewer>
 
-                <AutoSuggestBox x:Name="SearchBox" Grid.Column="4" Width="200" PlaceholderText="Search files..."
-                                QueryIcon="Find" TextChanged="SearchBox_TextChanged" />
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8">
+                    <CheckBox x:Name="RecursiveSearchCheck" Content="Recursive" VerticalAlignment="Center"
+                              ToolTipService.ToolTip="Search this folder and all subfolders" />
+                    <AutoSuggestBox x:Name="SearchBox" Width="200" PlaceholderText="Search files..."
+                                    QueryIcon="Find"
+                                    TextChanged="SearchBox_TextChanged"
+                                    QuerySubmitted="SearchBox_QuerySubmitted" />
+                </StackPanel>
             </Grid>
 
             <!-- File browser -->
@@ -149,6 +170,8 @@
                         <!-- File list view -->
                         <ListView x:Name="FileListView" Visibility="Collapsed"
                                   SelectionMode="Extended"
+                                  CanDragItems="True"
+                                  DragItemsStarting="FileListView_DragItemsStarting"
                                   SelectionChanged="FileListView_SelectionChanged"
                                   DoubleTapped="FileListView_DoubleTapped"
                                   RightTapped="FileListView_RightTapped">

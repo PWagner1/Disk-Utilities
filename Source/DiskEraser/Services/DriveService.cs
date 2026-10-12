@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace DiskEraser.Services;
 
 /// <summary>
@@ -14,11 +16,12 @@ public static class DriveService
     /// Presets for free-space overwrite before format. Not ATA Secure Erase / NVMe Sanitize and not a standards certification.
     /// </summary>
     public static readonly (string DisplayName, int Passes)[] SecureWipePresets =
-    [
-        ("1 pass — free-space overwrite", 1),
-        ("3 passes — free-space overwrite (higher effort)", 3),
-        ("7 passes — free-space overwrite (highest effort)", 7)
-    ];
+        new (string DisplayName, int Passes)[]
+        {
+            ("1 pass — free-space overwrite", 1),
+            ("3 passes — free-space overwrite (higher effort)", 3),
+            ("7 passes — free-space overwrite (highest effort)", 7)
+        };
 
     /// <summary>File system option for the format UI.</summary>
     /// <param name="Name">File system name passed to WMI Format.</param>
@@ -29,30 +32,32 @@ public static class DriveService
     /// File systems shown in the format UI. Only <see cref="FileSystemOption.IsNativelySupported"/> options are selectable.
     /// </summary>
     public static readonly FileSystemOption[] FormatFileSystems =
-    [
-        new("NTFS", true),
-        new("FAT32", true),
-        new("FAT", true),
-        new("exFAT", true),
-        new("ReFS", true),
-        new("ext2", false),
-        new("ext3", false),
-        new("ext4", false),
-        new("Btrfs", false),
-        new("XFS", false),
-        new("HFS", false),
-        new("HFS+", false),
-        new("APFS", false)
-    ];
+        new FileSystemOption[]
+        {
+            new("NTFS", true),
+            new("FAT32", true),
+            new("FAT", true),
+            new("exFAT", true),
+            new("ReFS", true),
+            new("ext2", false),
+            new("ext3", false),
+            new("ext4", false),
+            new("Btrfs", false),
+            new("XFS", false),
+            new("HFS", false),
+            new("HFS+", false),
+            new("APFS", false)
+        };
 
     /// <summary>Legacy list of all format UI names (native + non-native).</summary>
     public static readonly string[] SupportedFileSystems =
-        [.. FormatFileSystems.Select(f => f.Name)];
+        FormatFileSystems.Select(f => f.Name).ToArray();
 
     private static readonly string[] ProtectedLabelHints =
-    [
-        "SYSTEM RESERVED", "SYSTEM", "EFI", "ESP", "RECOVERY", "WINDOWS RE", "WINRE", "BOOT", "MSR"
-    ];
+        new[]
+        {
+            "SYSTEM RESERVED", "SYSTEM", "EFI", "ESP", "RECOVERY", "WINDOWS RE", "WINRE", "BOOT", "MSR"
+        };
 
     /// <summary>
     /// Returns true if the volume must not be formatted or wiped (system/boot/EFI/recovery/BitLocker system volumes).
@@ -175,7 +180,17 @@ public static class DriveService
             return string.Empty;
         }
 
-        var letter = driveLetter.Trim().ToUpperInvariant();
+        var letter = driveLetter.Trim().TrimEnd('\\', '/').ToUpperInvariant();
+        if (letter.Length == 1 && char.IsLetter(letter[0]))
+        {
+            return letter + ":";
+        }
+
+        if (letter.Length >= 2 && char.IsLetter(letter[0]) && letter[1] == ':')
+        {
+            return letter[..2];
+        }
+
         if (!letter.EndsWith(':'))
         {
             letter += ":";
@@ -386,13 +401,13 @@ public static class DriveService
     /// </summary>
     /// <param name="driveLetter">Drive letter with or without colon (e.g. "D" or "D:").</param>
     /// <param name="passes">Number of free-space overwrite passes.</param>
-    /// <param name="progress">Optional progress (pass number, total passes, percent 0–100).</param>
+    /// <param name="progress">Optional wipe progress including ETA.</param>
     /// <param name="cancellationToken">Optional cancellation.</param>
     /// <returns>True if wipe completed; false if drive is protected or error.</returns>
     public static async Task<bool> SecureWipeAsync(
         string driveLetter,
         int passes,
-        IProgress<(int pass, int totalPasses, double percent)>? progress,
+        IProgress<WipeProgress>? progress,
         CancellationToken cancellationToken = default)
     {
         var letter = NormalizeLetter(driveLetter);
@@ -409,6 +424,8 @@ public static class DriveService
         {
             long totalBytesToWipe = GetFreeSpaceBytes(rootPath) * Math.Max(1, passes);
             long totalWritten = 0;
+            var sw = Stopwatch.StartNew();
+            long lastReportAt = 0;
 
             for (int pass = 0; pass < passes; pass++)
             {
@@ -450,29 +467,43 @@ public static class DriveService
                                 }
                                 writtenThisFile += toWrite;
                                 totalWritten += toWrite;
-                                double pct = totalBytesToWipe > 0 ? (double)totalWritten / totalBytesToWipe * 100.0 : 0;
-                                progress?.Report((pass + 1, passes, Math.Min(100, pct)));
+
+                                // Throttle UI reports (~4 Hz)
+                                if (sw.ElapsedMilliseconds - lastReportAt >= 250 || totalWritten >= totalBytesToWipe)
+                                {
+                                    lastReportAt = sw.ElapsedMilliseconds;
+                                    double pct = totalBytesToWipe > 0 ? (double)totalWritten / totalBytesToWipe * 100.0 : 0;
+                                    var eta = WipeProgress.EstimateRemaining(sw.Elapsed, totalWritten, totalBytesToWipe);
+                                    progress?.Report(new WipeProgress(
+                                        pass + 1, passes, Math.Min(100, pct), totalWritten, totalBytesToWipe, eta));
+                                }
                             }
                         }
                     }
                     finally
                     {
-                        try { if (File.Exists(filePath))
+                        try
+                        {
+                            if (File.Exists(filePath))
                             {
                                 File.Delete(filePath);
                             }
-                        } catch { /* ignore */ }
+                        }
+                        catch
+                        {
+                            // ignore cleanup failures
+                        }
                     }
                     fileIndex++;
                     if (GetFreeSpaceBytes(rootPath) <= 0)
                     {
-                        break; // drive full, delete freed space and continue next pass
+                        break;
                     }
                 }
             }
         }, cancellationToken).ConfigureAwait(false);
 
-        progress?.Report((passes, passes, 100));
+        progress?.Report(new WipeProgress(passes, passes, 100, 0, 0, EstimatedRemaining: null));
         return true;
     }
 
@@ -488,6 +519,7 @@ public static class DriveService
     /// <param name="volumeLabel">Volume label (optional).</param>
     /// <param name="enableCompression">Compress files to save space; supported for NTFS (WMI may not implement on all systems).</param>
     /// <param name="cancellationToken">Optional cancellation.</param>
+    /// <param name="phaseProgress">Optional format-phase status messages for the UI.</param>
     /// <returns>Result: 0 = success; non-zero = WMI error code.</returns>
     public static async Task<uint> FormatAsync(
         string driveLetter,
@@ -496,7 +528,8 @@ public static class DriveService
         uint clusterSize,
         string? volumeLabel,
         bool enableCompression,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<string>? phaseProgress = null)
     {
         var letter = NormalizeLetter(driveLetter);
         if (string.IsNullOrEmpty(letter) || IsProtectedDriveLetter(letter))
@@ -509,6 +542,10 @@ public static class DriveService
         {
             return 1; // Unsupported file system
         }
+
+        phaseProgress?.Report(quickFormat
+            ? $"Formatting {letter} as {fileSystem} (quick)…"
+            : $"Formatting {letter} as {fileSystem} (full)…");
 
         uint result = 18; // Unknown error
         await Task.Run(() =>
@@ -534,12 +571,14 @@ public static class DriveService
                     return;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Error($"WMI Format failed for {letter}.", ex, nameof(DriveService));
                 result = 18;
             }
         }, cancellationToken).ConfigureAwait(false);
 
+        phaseProgress?.Report(result == 0 ? "Format completed." : "Format finished with errors.");
         return result;
     }
 
@@ -637,16 +676,29 @@ public static class DriveService
         }
     }
 
+    /// <summary>Most recent diskpart stdout/stderr (for UI status). Cleared on each run.</summary>
+    public static string LastDiskPartOutput { get; private set; } = string.Empty;
+
     /// <summary>Runs a diskpart script (one command per line). Returns true if exit code 0.</summary>
     public static bool RunDiskPartScript(IEnumerable<string> commands, out string output)
     {
-        output = string.Empty;
+        var result = RunDiskPartScriptDetailed(commands);
+        output = result.Output;
+        return result.Success;
+    }
+
+    /// <summary>Runs diskpart and returns structured success/exit code/output; logs failures.</summary>
+    public static DiskPartResult RunDiskPartScriptDetailed(IEnumerable<string> commands)
+    {
+        LastDiskPartOutput = string.Empty;
         try
         {
             string diskpartPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "diskpart.exe");
             if (!File.Exists(diskpartPath))
             {
-                return false;
+                LastDiskPartOutput = "diskpart.exe not found.";
+                AppLog.Error(LastDiskPartOutput, source: nameof(DriveService));
+                return new DiskPartResult(false, -1, LastDiskPartOutput);
             }
 
             string script = string.Join("\r\n", commands) + "\r\n";
@@ -665,41 +717,79 @@ public static class DriveService
                     RedirectStandardError = true
                 };
                 p.Start();
-                output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-                p.WaitForExit(30000);
-                return p.ExitCode == 0;
+                string stdout = p.StandardOutput.ReadToEnd();
+                string stderr = p.StandardError.ReadToEnd();
+                p.WaitForExit(120_000);
+                string output = (stdout + stderr).Trim();
+                LastDiskPartOutput = output;
+                bool ok = p.ExitCode == 0;
+                if (!ok)
+                {
+                    AppLog.Warning(
+                        $"diskpart exited with code {p.ExitCode}. Output: {TruncateForLog(output)}",
+                        source: nameof(DriveService));
+                }
+
+                return new DiskPartResult(ok, p.ExitCode, output);
             }
             finally
             {
                 try { File.Delete(scriptPath); } catch { /* ignore */ }
             }
         }
-        catch (System.ComponentModel.Win32Exception)
+        catch (Win32Exception)
         {
-            // Elevation required (e.g. "The requested operation requires elevation")
-            output = "Administrator rights required.";
-            return false;
+            LastDiskPartOutput = "Administrator rights required.";
+            AppLog.Warning(LastDiskPartOutput, source: nameof(DriveService));
+            return new DiskPartResult(false, -1, LastDiskPartOutput);
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            LastDiskPartOutput = ex.Message;
+            AppLog.Error("diskpart failed.", ex, nameof(DriveService));
+            return new DiskPartResult(false, -1, LastDiskPartOutput);
         }
     }
 
-    /// <summary>Creates a primary partition on the given disk. Size in MB; 0 = use all unallocated. May require administrator.</summary>
-    public static bool CreatePartition(int diskIndex, uint sizeMb)
+    private static string TruncateForLog(string text, int max = 500)
+        => text.Length <= max ? text : text[..max] + "…";
+
+    /// <summary>Result of a diskpart script run.</summary>
+    public readonly record struct DiskPartResult(bool Success, int ExitCode, string Output);
+
+    /// <summary>Builds diskpart commands to create a primary partition (size 0 = use all unallocated).</summary>
+    public static IReadOnlyList<string> BuildCreatePartitionCommands(int diskIndex, uint sizeMb)
     {
         var commands = new List<string> { $"select disk {diskIndex}" };
         commands.Add(sizeMb > 0 ? $"create partition primary size={sizeMb}" : "create partition primary");
-
-        return RunDiskPartScript(commands, out _);
+        return commands;
     }
+
+    /// <summary>Builds diskpart commands to delete a partition by diskpart partition number (1-based).</summary>
+    public static IReadOnlyList<string> BuildDeletePartitionCommands(int diskIndex, int diskpartPartitionNumber)
+        => new List<string> { $"select disk {diskIndex}", $"select partition {diskpartPartitionNumber}", "delete partition" };
+
+    /// <summary>Builds diskpart commands to extend a volume.</summary>
+    public static IReadOnlyList<string> BuildExtendVolumeCommands(int volumeNumber, uint? sizeMb)
+    {
+        var commands = new List<string> { $"select volume {volumeNumber}" };
+        commands.Add(sizeMb is > 0 ? $"extend size={sizeMb}" : "extend");
+        return commands;
+    }
+
+    /// <summary>Builds diskpart commands to shrink a volume by the desired MB.</summary>
+    public static IReadOnlyList<string> BuildShrinkVolumeCommands(int volumeNumber, uint desiredMb)
+        => new List<string> { $"select volume {volumeNumber}", $"shrink desired={desiredMb}" };
+
+    /// <summary>Creates a primary partition on the given disk. Size in MB; 0 = use all unallocated. May require administrator.</summary>
+    public static bool CreatePartition(int diskIndex, uint sizeMb)
+        => RunDiskPartScript(BuildCreatePartitionCommands(diskIndex, sizeMb), out _);
 
     /// <summary>Deletes the given partition on the disk. May require administrator. Cannot delete system/boot partitions from user mode.</summary>
     public static bool DeletePartition(int diskIndex, int partitionIndex)
     {
         int? partNum = GetPartitionNumberFromDiskPart(diskIndex, partitionIndex);
-        return partNum != null && RunDiskPartScript([$"select disk {diskIndex}", $"select partition {partNum}", "delete partition"], out _);
+        return partNum != null && RunDiskPartScript(BuildDeletePartitionCommands(diskIndex, partNum.Value), out _);
     }
 
     /// <summary>Gets the diskpart partition number (1-based) for the given disk and 0-based partition index. Runs list partition and parses.</summary>
@@ -721,25 +811,11 @@ public static class DriveService
 
     /// <summary>Extends the volume by the given size in MB. If sizeMB is 0 or null, extends to use all contiguous unallocated space. May require administrator.</summary>
     public static bool ExtendVolume(int volumeNumber, uint? sizeMb)
-    {
-        var commands = new List<string> { $"select volume {volumeNumber}" };
-        if (sizeMb is > 0)
-        {
-            commands.Add($"extend size={sizeMb}");
-        }
-        else
-        {
-            commands.Add("extend");
-        }
-
-        return RunDiskPartScript(commands, out _);
-    }
+        => RunDiskPartScript(BuildExtendVolumeCommands(volumeNumber, sizeMb), out _);
 
     /// <summary>Shrinks the volume by the desired amount in MB. May require administrator.</summary>
     public static bool ShrinkVolume(int volumeNumber, uint desiredMb)
-    {
-        return desiredMb != 0 && RunDiskPartScript([$"select volume {volumeNumber}", $"shrink desired={desiredMb}"], out _);
-    }
+        => desiredMb != 0 && RunDiskPartScript(BuildShrinkVolumeCommands(volumeNumber, desiredMb), out _);
 
     /// <summary>Assigns a drive letter to a partition (by disk and partition index). May require administrator.</summary>
     public static bool AssignLetterToPartition(int diskIndex, int partitionIndex, string? letter)

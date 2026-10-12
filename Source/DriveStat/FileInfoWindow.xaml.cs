@@ -12,8 +12,8 @@ public sealed partial class FileInfoWindow : Window
     {
         InitializeComponent();
         _node = node;
-        TrySetMicaBackdrop();
-        TrySetExtendedTitleBar();
+        WindowChrome.TryApplyMica(this);
+        WindowChrome.TryExtendTitleBar(this, AppTitleBar);
         Title = $"{node.Name} — Properties";
         TitleText.Text = $"{node.Name} — Properties";
         ItemIconText.Text = node.IsDirectory ? "📁" : "📄";
@@ -22,28 +22,6 @@ public sealed partial class FileInfoWindow : Window
         PopulateDetails(node);
         PopulateSecurity(node);
         PopulateSignatures(node);
-    }
-
-    private void TrySetMicaBackdrop()
-    {
-        try
-        {
-            if (MicaController.IsSupported())
-            {
-                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-            }
-        }
-        catch { }
-    }
-
-    private void TrySetExtendedTitleBar()
-    {
-        try
-        {
-            ExtendsContentIntoTitleBar = true;
-            SetTitleBar(AppTitleBar);
-        }
-        catch { }
     }
 
     private void PopulateGeneral(DirectoryNode node)

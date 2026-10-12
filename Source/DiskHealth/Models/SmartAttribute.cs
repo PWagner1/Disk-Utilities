@@ -27,23 +27,5 @@ public class SmartAttribute
         };
     }
 
-    private static string FormatBytes(ulong bytes)
-    {
-        if (bytes >= 1UL << 40)
-        {
-            return $"{bytes >> 40:F1} TB";
-        }
-
-        if (bytes >= 1UL << 30)
-        {
-            return $"{bytes >> 30:F1} GB";
-        }
-
-        if (bytes >= 1UL << 20)
-        {
-            return $"{bytes >> 20:F1} MB";
-        }
-
-        return $"{bytes:N0} B";
-    }
+    private static string FormatBytes(ulong bytes) => ByteFormatter.Format(bytes);
 }

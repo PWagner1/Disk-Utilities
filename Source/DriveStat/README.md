@@ -6,14 +6,20 @@ A WinUI 3 disk usage statistics viewer inspired by [WinDirStat](https://windirst
 
 - **Directory tree** — Browse folders sorted by size (largest first)
 - **Treemap** — Visual representation of disk usage with colored rectangles proportional to file size
-- **Extension list** — Statistics by file type with size and file count
+- **Extension list** — Statistics by file type with size and file count; colors persist across scans
+- **Hard-link / junction aware** — Hard-linked data counted once; junctions and symlinks are listed but not descended into
+- **Export** — CSV or HTML report after a scan
+- **Cleanup actions** — Context menu: scan from here, move, Recycle Bin, or permanent delete (with confirmation)
+- **Explorer / CLI** — `DriveStat.exe --path "D:\Folder"` (also via SuiteLauncher Explorer menu “Analyze disk usage”)
 
 ## Usage
 
 1. Select a drive from the dropdown or click **Browse...** to pick a folder
 2. Click **Scan** to analyze disk usage
 3. Use the directory tree to drill down; the treemap updates to show the selected folder's contents
-4. Right-click a folder in the tree and choose **Open in Explorer** to open it in File Explorer
+4. Right-click a tree item for Explorer, HandleFinder, subtree scan, move, recycle, or delete
+5. Click **Export...** to save a CSV or HTML report
+6. Optional: install Explorer menus from SuiteLauncher
 
 ## Building
 

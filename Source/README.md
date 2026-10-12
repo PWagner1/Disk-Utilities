@@ -1,17 +1,23 @@
 # Disk Utilities – Source
 
-This folder contains five WinUI 3 desktop applications for disk management, plus a shared library:
+This folder contains WinUI 3 desktop applications for disk management, plus a shared library:
 
+- **[SuiteLauncher](SuiteLauncher/README.md)** – Suite entry point (launch tools, theme seed)
 - **[DiskEraser](DiskEraser/README.md)** – Format drives with optional free-space overwrite; partition create/delete/extend/shrink
 - **[DiskHealth](DiskHealth/README.md)** – Signature-based file recovery and S.M.A.R.T. drive health
 - **DiskSeer** – Read and modify drives formatted with Apple or Linux file systems
 - **[DriveStat](DriveStat/README.md)** – Disk usage statistics (tree, treemap, extensions)
 - **[HandleFinder](HandleFinder/README.md)** – Find processes locking files, folders, or drives
-- **DiskUtilities.Shared** – Shared helpers (elevation detection, UAC relaunch, warning banners)
+- **DiskUtilities.Shared** – Shared helpers (elevation, logging, suite launch/settings, confirmations)
 
 ## Structure
 
-- **DiskUtilities.Shared/** – Class library referenced by all apps (`ElevationHelper`, `ElevationUi`)
+- **DiskUtilities.Shared/** – Class library referenced by all apps (`ElevationHelper`, `ElevationUi`, `WindowChrome`, `ByteFormatter`, `AppLog`, `SuiteApps`, `SuiteSettings`)
+- **Directory.Build.props** / **Directory.Build.targets** – Shared TFM, package versions, and suite `bin\` output for apps
+
+- **SuiteLauncher/** – WinUI 3 suite entry point
+  - **MainWindow.xaml** – Tool list, theme seed, launch / launch elevated
+  - **README.md** – Features and build notes
 
 - **DiskEraser/** – WinUI 3 project for drive formatting
   - **MainWindow.xaml** – Drive selection, format options, partition layout diagram
@@ -101,8 +107,10 @@ DiskSeer can read and write drives formatted with non-Windows file systems:
 
 **APFS (optional):**
 
-- Detected always; **browsing** requires [libfsapfs](DiskSeer/Docs/LIBFSAPFS_BUILD.md) next to the executable
-- Read-only; APFS v2; no T2 encryption / LZFSE / snapshots; large volumes may use a temp copy (see libfsapfs docs)
+- Detected always; partitions show `[needs libfsapfs]` until the native library is present
+- **Browsing** requires `libfsapfs-1.dll` (+ deps) next to `DiskSeer.exe` — see [LIBFSAPFS_BUILD.md](DiskSeer/Docs/LIBFSAPFS_BUILD.md) (also shipped under `Docs\` in the output folder; DiskSeer has an in-app “Open build docs” / “Show DLL folder” banner)
+- Read-only; APFS v2; no T2 encryption / LZFSE / snapshots
+- Opening stages the partition to a temp file (progress in UI) up to **128 GB** for libfsapfs
 
 ### Features
 
@@ -154,4 +162,13 @@ Formatting is done via WMI `Win32_Volume.Format`. Windows natively supports NTFS
 
 ## Packaging
 
-Projects are configured as **unpackaged** (`WindowsPackageType=None`) for simple build and run. To produce an MSIX package, set `WindowsPackageType` to `MSIX`, add `Package.appxmanifest`, and include the required Assets.
+Projects are configured as **unpackaged** (`WindowsPackageType=None`) for simple build and run. Distribution is via GitHub Releases zip plus winget/Scoop/Chocolatey templates under [`packaging/`](../packaging/README.md). Full MSIX remains deferred (needs Assets + signing); do not add incomplete manifests.
+
+## Tests
+
+```powershell
+cd Source
+dotnet test DiskUtilities.Tests -c Debug -p:Platform=x64 -m:1
+```
+
+Use `-m:1` so WinUI apps that share `bin\` do not race on `.xbf` outputs. CI runs the same build/test matrix (x64 Debug and Release) via `.github/workflows/ci.yml`.

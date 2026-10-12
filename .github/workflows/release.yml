@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Build Release x64
+        run: dotnet build "Source/Disk Utilities.sln" -c Release -p:Platform=x64 -m:1 --verbosity minimal
+
+      - name: Test
+        run: dotnet test "Source/DiskUtilities.Tests/DiskUtilities.Tests.csproj" -c Release -p:Platform=x64 -m:1 --no-build --verbosity minimal
+
+      - name: Stage suite folder
+        shell: pwsh
+        run: |
+          $src = "bin\x64\Release\net10.0-windows10.0.19041.0"
+          if (-not (Test-Path $src)) { throw "Missing build output: $src" }
+          $stage = "artifacts\DiskUtilities-win-x64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Path "$src\*" -Destination $stage -Recurse -Force
+          $zip = "artifacts\DiskUtilities-win-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "DiskUtilities-win-x64.zip  $hash" | Set-Content -Path "artifacts\SHA256SUMS.txt" -Encoding ascii
+          Get-ChildItem artifacts | Format-Table Name, Length
+          Write-Host "SHA256 $hash"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            Unpackaged x64 suite zip. Run `SuiteLauncher.exe`.
+
+            Distribution helpers (winget / Scoop / Chocolatey templates): see `packaging/README.md`.
+            After publishing this release, generate filled manifests with:
+            `packaging/New-ManifestsFromTag.ps1 -Version <tag> -ZipUrl <asset-url>`
+          files: |
+            artifacts/DiskUtilities-win-x64.zip
+            artifacts/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

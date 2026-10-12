@@ -1,0 +1,19 @@
+{
+  "Suite.Title": "Disk Utilities",
+  "Suite.Intro": "Choose a tool to launch. Apps that need Administrator will prompt via UAC when required.",
+  "Suite.Theme": "Theme",
+  "Suite.Theme.Default": "System default",
+  "Suite.Theme.Light": "Light",
+  "Suite.Theme.Dark": "Dark",
+  "Suite.AckDestructive": "Prefer acknowledgement checkbox on destructive ops",
+  "Suite.InstallShell": "Install Explorer menus",
+  "Suite.RemoveShell": "Remove Explorer menus",
+  "Suite.Launch": "Launch",
+  "Suite.LaunchElevated": "Launch elevated",
+  "Suite.RestartAdmin": "Restart as administrator",
+  "A11y.ThemeCombo": "Application theme",
+  "A11y.AckDestructive": "Prefer acknowledgement checkbox on destructive operations",
+  "A11y.InstallShell": "Install Explorer context menus for this user",
+  "A11y.RemoveShell": "Remove Explorer context menus for this user",
+  "A11y.AppList": "Suite applications"
+}

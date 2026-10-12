@@ -29,10 +29,10 @@ Disk Utilities is a coherent suite of five specialized WinUI tools (~14k lines o
 | Projects | 5 independent WinUI apps in one solution; no shared class library |
 | Approx. C# size | ~14k lines (DiskEraser largest ~5.5k) |
 | Architecture | Models + Services + large code-behind windows; DiskSeer uses an FS adapter pattern |
-| Tests | None |
-| CI / Dependabot | None |
+| Tests | `DiskUtilities.Tests` (xUnit) covering core service helpers |
+| CI / Dependabot | GitHub Actions x64 Debug/Release + Dependabot NuGet/Actions |
 | Shared build config | No `Directory.Build.props` / `.editorconfig` / `global.json` |
-| Packaging | Unpackaged; some `Package.appxmanifest` files exist without Assets / complete MSIX story |
+| Packaging | Unpackaged (`WindowsPackageType=None`); incomplete MSIX manifests removed until a full packaging story exists |
 | Docs | Root README still titled “Drive-Wiper” and covers only DiskEraser; `Source/README.md` omits DriveStat; HandleFinder docs are excellent |
 | Privilege model | DiskSeer / HandleFinder require admin; DiskEraser / DiskHealth / DriveStat are `asInvoker` and fail at runtime without elevation for some ops |
 | Error handling | Many empty `catch { }` blocks that return empty results |
@@ -113,11 +113,11 @@ These are high-priority UX/docs fixes more than “new features”:
 
 **Improvements**
 
-- Clear unsupported FS options or integrate a documented external formatter path
-- Show wipe vs format progress separately; estimate remaining time
-- Persist last-used format options (label, FS, allocation unit, quick format)
-- Better diskpart error surfacing (capture stdout/stderr into the UI)
-- Undo/preview for shrink/extend (show before/after diagram before applying)
+- Clear unsupported FS options or integrate a documented external formatter path *(done: disabled + explanation)*
+- Show wipe vs format progress separately; estimate remaining time *(done)*
+- Persist last-used format options (label, FS, allocation unit, quick format) *(done)*
+- Better diskpart error surfacing (capture stdout/stderr into the UI) *(done)*
+- Undo/preview for shrink/extend (show before/after sizes before applying) *(done; pie refresh after apply)*
 - Optional full-volume overwrite (not only free space) with strong warnings
 - Hardware erase where available: ATA Secure Erase / NVMe Format/Sanitize (advanced, admin, with capability detection)
 
@@ -141,12 +141,12 @@ These are high-priority UX/docs fixes more than “new features”:
 
 **New features**
 
-- NTFS MFT / Recycle Bin–aware undelete path alongside carving
-- Deep scan vs quick scan modes
-- Recovered-file quarantine report (CSV/JSON)
+- NTFS MFT / Recycle Bin–aware undelete path alongside carving *(done — scoped MFT + Recycle Bin modes)*
+- Deep scan vs quick scan modes *(done)*
+- Recovered-file quarantine report (CSV/JSON) *(done)*
 - SMART history / trend (store last N readings)
-- Temperature / wear / spare capacity cards for SSDs
-- Optional read-only image of volume before scan (forensic-lite)
+- Temperature / wear / spare capacity cards for SSDs *(partial — NVMe cards)*
+- Optional read-only image of volume before scan (forensic-lite) *(done)*
 
 ### 5.3 DiskSeer
 
@@ -189,16 +189,16 @@ These are high-priority UX/docs fixes more than “new features”:
 
 **Improvements** (already the most polished)
 
-- Keep docs in sync with actual output paths / TFM (`net10` vs older `net8` paths in README)
-- Show access mask decoded more friendly in the UI
-- Filter by process name / PID / handle type
-- “Restart as admin” banner if somehow launched elevated incorrectly
+- Keep docs in sync with actual output paths / TFM (`net10` vs older `net8` paths in README) *(done)*
+- Show access mask decoded more friendly in the UI *(done)*
+- Filter by process name / PID / handle type *(done)*
+- “Restart as admin” banner if somehow launched elevated incorrectly *(done)*
 
 **New features**
 
-- Watch mode: refresh until lock clears (GUI complement to `--wait`)
-- Integrate with Explorer context menu (“What has this locked?”)
-- Optional close-handle batch with per-handle confirm
+- Watch mode: refresh until lock clears (GUI complement to `--wait`) *(done)*
+- Integrate with Explorer context menu (“What has this locked?”) *(done — SuiteLauncher HKCU registration)*
+- Optional close-handle batch with per-handle confirm *(done)*
 - Module / memory-mapped section insights beyond file handles (clearly labeled as limited)
 - PowerToys-style “as a tool” packaging if you ever ship a suite installer
 
@@ -230,26 +230,28 @@ These are high-priority UX/docs fixes more than “new features”:
 
 ### P1 — Foundation (2–4 weeks)
 
-- [ ] `Directory.Build.props` + shared project for window chrome / helpers
-- [ ] Logging instead of silent catches on service boundaries
-- [ ] Unit tests for RecoveryService signatures, HandleService path rules, DriveService script generation, ScanService aggregates
-- [ ] GitHub Actions build (x64 Debug/Release)
+- [x] `Directory.Build.props` + shared project for window chrome / helpers — [#5](https://github.com/PWagner1/Disk-Utilities/issues/5)
+- [x] Logging instead of silent catches on service boundaries — [#6](https://github.com/PWagner1/Disk-Utilities/issues/6)
+- [x] Unit tests for RecoveryService signatures, HandleService path rules, DriveService script generation, ScanService aggregates — [#7](https://github.com/PWagner1/Disk-Utilities/issues/7)
+- [x] GitHub Actions build (x64 Debug/Release) — [#8](https://github.com/PWagner1/Disk-Utilities/issues/8)
+- [x] Standardize destructive-operation confirmations — [#9](https://github.com/PWagner1/Disk-Utilities/issues/9)
 
 ### P2 — High-value features (ongoing)
 
-- [ ] DriveStat: delete/recycle + export + hardlink-aware scan
-- [ ] DiskHealth: more signatures + NVMe SMART depth + filters/preview
-- [ ] DiskSeer: APFS packaging UX + search + read-only default
-- [ ] DiskEraser: wipe/format progress ETA + unsupported FS gating
-- [ ] Suite launcher + GitHub Releases automation
+- [x] DriveStat: delete/recycle + export + hardlink-aware scan — [#10](https://github.com/PWagner1/Disk-Utilities/issues/10)
+- [x] DiskHealth: more signatures + NVMe SMART depth + filters/preview — [#11](https://github.com/PWagner1/Disk-Utilities/issues/11)
+- [x] DiskSeer: APFS packaging UX + search + read-only default — [#12](https://github.com/PWagner1/Disk-Utilities/issues/12)
+- [x] DiskEraser: wipe/format progress ETA + unsupported FS gating — [#13](https://github.com/PWagner1/Disk-Utilities/issues/13)
+- [x] Suite launcher + GitHub Releases automation — [#14](https://github.com/PWagner1/Disk-Utilities/issues/14)
+- [x] HandleFinder: filters, watch mode, and docs sync — [#15](https://github.com/PWagner1/Disk-Utilities/issues/15)
 
 ### P3 — Differentiation
 
-- [ ] Hardware secure erase / NVMe sanitize (capability-gated)
-- [ ] NTFS MFT-aware recovery
-- [ ] Explorer context-menu integration (HandleFinder / DriveStat)
-- [ ] Full MSIX or winget distribution
-- [ ] Localization + accessibility pass
+- [x] Hardware secure erase / NVMe sanitize (capability-gated) — [#16](https://github.com/PWagner1/Disk-Utilities/issues/16)
+- [x] NTFS MFT / Recycle Bin–aware undelete — [#17](https://github.com/PWagner1/Disk-Utilities/issues/17)
+- [x] Explorer context-menu integration (HandleFinder / DriveStat) — [#18](https://github.com/PWagner1/Disk-Utilities/issues/18)
+- [x] Full MSIX or winget distribution — [#19](https://github.com/PWagner1/Disk-Utilities/issues/19) *(winget/Scoop/Chocolatey + Releases; MSIX deferred)*
+- [x] Localization + accessibility pass — [#20](https://github.com/PWagner1/Disk-Utilities/issues/20) *(en seed + SuiteLauncher a11y; more apps incremental)*
 
 ---
 

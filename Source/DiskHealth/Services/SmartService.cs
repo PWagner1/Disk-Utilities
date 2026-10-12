@@ -35,7 +35,7 @@ public static class SmartService
 
     /// <summary>
     /// Gets physical drives with S.M.A.R.T. status and attributes.
-    /// Uses WMI root\WMI. MSStorageDriver_ATAPISmartData applies to SATA/ATA only; NVMe drives show health status only.
+    /// Uses WMI root\WMI for ATA SMART; NVMe drives also query Health Information Log via Storage API.
     /// </summary>
     public static IReadOnlyList<SmartDriveInfo> GetSmartDrives()
     {
@@ -57,7 +57,7 @@ public static class SmartService
             smartMap ??= [];
 
             using var searcher = new ManagementObjectSearcher(
-                "SELECT DeviceID, Index, Size, Model, PNPDeviceID FROM Win32_DiskDrive");
+                "SELECT DeviceID, Index, Size, Model, PNPDeviceID, InterfaceType FROM Win32_DiskDrive");
 
             foreach (ManagementBaseObject obj in searcher.Get())
             {
@@ -72,22 +72,82 @@ public static class SmartService
 
                 var (predictFailure, reason) = instanceName != null ? failureMap.GetValueOrDefault(instanceName, (null, null)) : (null, null);
                 var vendorSpecific = instanceName != null ? smartMap.GetValueOrDefault(instanceName) : null;
+                int index = obj["Index"] != null ? Convert.ToInt32(obj["Index"]) : -1;
+                string model = obj["Model"]?.ToString()?.Trim() ?? "Unknown";
+                string interfaceType = obj["InterfaceType"]?.ToString()?.Trim() ?? string.Empty;
+                bool isNvme = NvmeHealthReader.IsLikelyNvme(interfaceType, pnpId, model);
+                NvmeHealthInfo? nvme = null;
+                if (isNvme && index >= 0)
+                {
+                    try
+                    {
+                        nvme = NvmeHealthReader.TryRead(index);
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLog.Warning($"NVMe health log unavailable for disk {index}.", ex, nameof(SmartService));
+                    }
+                }
+
+                var attrs = ParseSmartAttributes(vendorSpecific);
+                if (nvme != null)
+                {
+                    attrs = MergeNvmeAsAttributes(attrs, nvme);
+                }
 
                 list.Add(new SmartDriveInfo
                 {
-                    Index = obj["Index"] != null ? Convert.ToInt32(obj["Index"]) : -1,
-                    Model = obj["Model"]?.ToString()?.Trim() ?? "Unknown",
+                    Index = index,
+                    Model = model,
                     Size = obj["Size"] != null ? Convert.ToUInt64(obj["Size"]) : 0,
+                    InterfaceType = interfaceType,
                     PnpDeviceId = pnpId,
                     PredictFailure = predictFailure,
                     Reason = reason,
-                    Attributes = ParseSmartAttributes(vendorSpecific)
+                    Attributes = attrs,
+                    IsNvme = isNvme,
+                    NvmeHealth = nvme
                 });
             }
         }
-        catch { /* Caller can handle empty list */ }
+        catch (Exception ex)
+        {
+            AppLog.Error("Failed to enumerate S.M.A.R.T. drives via WMI.", ex, nameof(SmartService));
+        }
 
         return list.OrderBy(d => d.Index).ToList();
+    }
+
+    private static IReadOnlyList<SmartAttribute> MergeNvmeAsAttributes(
+        IReadOnlyList<SmartAttribute> existing,
+        NvmeHealthInfo nvme)
+    {
+        var list = existing.ToList();
+        void AddSynthetic(byte id, string name, ulong raw, bool critical = false)
+        {
+            if (list.Any(a => a.Id == id))
+            {
+                return;
+            }
+
+            list.Add(new SmartAttribute
+            {
+                Id = id,
+                Name = name,
+                Value = 100,
+                Worst = 100,
+                Raw = raw,
+                IsCritical = critical
+            });
+        }
+
+        AddSynthetic(0xC2, "NVMe Temperature (°C)", (ulong)Math.Max(0, nvme.TemperatureCelsius));
+        AddSynthetic(0xE4, "NVMe Available Spare (%)", nvme.AvailableSparePercent);
+        AddSynthetic(0xE5, "NVMe Percentage Used (%)", nvme.PercentageUsed, critical: nvme.PercentageUsed >= 90);
+        AddSynthetic(0xE6, "NVMe Power-On Hours", nvme.PowerOnHours);
+        AddSynthetic(0xE7, "NVMe Media Errors", nvme.MediaErrors, critical: nvme.MediaErrors > 0);
+        AddSynthetic(0xE8, "NVMe Unsafe Shutdowns", nvme.UnsafeShutdowns);
+        return list.OrderBy(a => a.Id).ToList();
     }
 
     /// <summary>
@@ -129,7 +189,11 @@ public static class SmartService
                     map[pnpId] = instanceName;
             }
         }
-        catch { /* Return empty map */ }
+        catch (Exception ex)
+        {
+            AppLog.Warning("MSWmi_PnPDeviceId map unavailable (WMI).", ex, nameof(SmartService));
+        }
+
         return map;
     }
 
@@ -152,7 +216,11 @@ public static class SmartService
                 map[instanceName] = (predictFailure, reason);
             }
         }
-        catch { /* Return empty map */ }
+        catch (Exception ex)
+        {
+            AppLog.Warning("FailurePredictStatus map unavailable (WMI).", ex, nameof(SmartService));
+        }
+
         return map;
     }
 
@@ -172,7 +240,11 @@ public static class SmartService
                 }
             }
         }
-        catch { /* Return empty map */ }
+        catch (Exception ex)
+        {
+            AppLog.Warning("ATAPISmartData map unavailable (common for NVMe-only systems).", ex, nameof(SmartService));
+        }
+
         return map;
     }
 

@@ -5,42 +5,14 @@ public sealed partial class SmartStatsWindow : Window
     public SmartStatsWindow()
     {
         InitializeComponent();
-        TrySetMicaBackdrop();
-        TrySetExtendedTitleBar();
+        WindowChrome.TryApplyMica(this);
+        WindowChrome.TryExtendTitleBar(this, AppTitleBar);
         _ = LoadSmartDrivesAsync();
     }
 
     private void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         _ = LoadSmartDrivesAsync();
-    }
-
-    private void TrySetMicaBackdrop()
-    {
-        try
-        {
-            if (MicaController.IsSupported())
-            {
-                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-            }
-        }
-        catch
-        {
-            // ignored
-        }
-    }
-
-    private void TrySetExtendedTitleBar()
-    {
-        try
-        {
-            ExtendsContentIntoTitleBar = true;
-            SetTitleBar(AppTitleBar);
-        }
-        catch
-        {
-            // ignored
-        }
     }
 
     private async Task LoadSmartDrivesAsync()
@@ -51,6 +23,7 @@ public sealed partial class SmartStatsWindow : Window
 
         try
         {
+            AppLog.ClearLastError();
             var drives = await SmartService.GetSmartDrivesAsync();
             SmartDriveCombo.Items.Clear();
             foreach (var d in drives)
@@ -64,12 +37,16 @@ public sealed partial class SmartStatsWindow : Window
             }
             else
             {
-                SmartHealthText.Text = "No drives found. Try running as administrator. S.M.A.R.T. supports SATA/ATA drives; NVMe shows health status only.";
+                string? error = AppLog.ConsumeLastError();
+                SmartHealthText.Text = !string.IsNullOrEmpty(error)
+                    ? error
+                    : "No drives found. Try running as administrator.";
                 UpdateHealthVisualization(null);
             }
         }
         catch (Exception ex)
         {
+            AppLog.Error("S.M.A.R.T. window failed to load drives.", ex, nameof(SmartStatsWindow));
             SmartHealthText.Text = $"Error: {ex.Message}";
             UpdateHealthVisualization(null);
         }
@@ -85,12 +62,16 @@ public sealed partial class SmartStatsWindow : Window
         if (SmartDriveCombo.SelectedItem is SmartDriveInfo info)
         {
             SmartHealthText.Text = info.HealthStatus;
+            DriveKindText.Text = info.IsNvme
+                ? (info.NvmeHealth != null ? "NVMe (health log)" : "NVMe (health log unavailable)")
+                : "ATA/SATA (ATAPI SMART)";
             SmartAttributesList.ItemsSource = info.Attributes;
             UpdateHealthVisualization(info);
         }
         else
         {
             SmartHealthText.Text = "—";
+            DriveKindText.Text = "";
             SmartAttributesList.ItemsSource = null;
             UpdateHealthVisualization(null);
         }
@@ -104,8 +85,15 @@ public sealed partial class SmartStatsWindow : Window
             HealthScoreText.Text = "—";
             HealthSummaryText.Text = "No drive selected.";
             HealthCard.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Gray);
+            TempCardText.Text = "—";
+            SpareCardText.Text = "—";
+            WearCardText.Text = "—";
             return;
         }
+
+        TempCardText.Text = info.TemperatureDisplay;
+        SpareCardText.Text = info.AvailableSpareDisplay;
+        WearCardText.Text = info.PercentageUsedDisplay;
 
         int score = CalculateHealthScore(info);
         HealthScoreBar.Value = score;
@@ -113,12 +101,14 @@ public sealed partial class SmartStatsWindow : Window
 
         if (score >= 80)
         {
-            HealthSummaryText.Text = "Healthy. No critical S.M.A.R.T. issues detected.";
+            HealthSummaryText.Text = info.IsNvme
+                ? "Healthy. NVMe health log shows no critical warnings."
+                : "Healthy. No critical S.M.A.R.T. issues detected.";
             HealthCard.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.ForestGreen);
         }
         else if (score >= 50)
         {
-            HealthSummaryText.Text = "Watch. Some S.M.A.R.T. indicators need monitoring.";
+            HealthSummaryText.Text = "Watch. Some health indicators need monitoring.";
             HealthCard.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Goldenrod);
         }
         else
@@ -130,23 +120,30 @@ public sealed partial class SmartStatsWindow : Window
 
     private static int CalculateHealthScore(SmartDriveInfo info)
     {
-        if (info.PredictFailure == true)
+        if (info.PredictFailure == true || info.NvmeHealth?.HasCriticalWarning == true)
             return 15;
 
         int score = 100;
         var attrs = info.Attributes;
 
-        // Penalize known critical attributes when raw values are non-zero.
         score -= attrs.Where(a => a.IsCritical && a.Raw > 0).Sum(_ => 12);
-
-        // Extra penalties for common hard-failure markers.
         score -= attrs.Where(a => a.Id is 0x05 or 0xC5 or 0xC6 && a.Raw > 0).Sum(_ => 10);
 
-        // If no attributes are available (often NVMe via WMI), keep a neutral score.
-        if (attrs.Count == 0 && info.PredictFailure is null)
+        if (info.NvmeHealth != null)
+        {
+            if (info.NvmeHealth.AvailableSparePercent < info.NvmeHealth.AvailableSpareThreshold)
+                score -= 25;
+            if (info.NvmeHealth.PercentageUsed >= 90)
+                score -= 20;
+            else if (info.NvmeHealth.PercentageUsed >= 80)
+                score -= 10;
+            if (info.NvmeHealth.MediaErrors > 0)
+                score -= 20;
+        }
+
+        if (attrs.Count == 0 && info.NvmeHealth == null && info.PredictFailure is null)
             score = 65;
 
         return Math.Clamp(score, 0, 100);
     }
-
 }

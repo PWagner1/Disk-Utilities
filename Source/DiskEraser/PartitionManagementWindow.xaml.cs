@@ -9,19 +9,22 @@ public sealed partial class PartitionManagementWindow : Window
     private IReadOnlyList<DiskInfo> _disks = [];
     private readonly ObservableCollection<PartitionListEntry> _partitionEntries = [];
     private readonly List<Microsoft.UI.Xaml.Shapes.Path> _pieSlicePaths = [];
+    private HardwareEraseCapability? _hardwareEraseCapability;
 
     public PartitionManagementWindow()
     {
         InitializeComponent();
         App.ApplyTheme(this);
-        TrySetMicaBackdrop();
-        TrySetExtendedTitleBar();
-        TrySetWindowSize(1245, 700);
+        WindowChrome.TryApplyMica(this);
+        var titleBar = (Content as FrameworkElement)?.FindName("PartitionTitleBar") as UIElement;
+        WindowChrome.TryExtendTitleBar(this, titleBar);
+        WindowChrome.TrySetSize(this, 1245, 780);
+        ClearHardwareEraseProbe();
         PartitionList.ItemsSource = _partitionEntries;
         App.DiagramColoursChanged += OnDiagramColoursChanged;
         Closed += (_, _) => App.DiagramColoursChanged -= OnDiagramColoursChanged;
         _ = LoadDisksAsync();
-        WindowUtilities.TryDisableMaximizeBox(this);
+        WindowChrome.TryDisableMaximizeBox(this);
     }
 
     private void OnDiagramColoursChanged(object? sender, EventArgs e)
@@ -30,43 +33,6 @@ public sealed partial class PartitionManagementWindow : Window
         {
             _ = BuildPieChartAsync(disk);
         }
-    }
-
-    private void TrySetMicaBackdrop()
-    {
-        try
-        {
-            if (MicaController.IsSupported())
-            {
-                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-            }
-        }
-        catch { /* ignore */ }
-    }
-
-    private void TrySetExtendedTitleBar()
-    {
-        try
-        {
-            var titleBar = (Content as FrameworkElement)?.FindName("PartitionTitleBar") as Grid;
-            if (titleBar != null)
-            {
-                ExtendsContentIntoTitleBar = true;
-                SetTitleBar(titleBar);
-            }
-        }
-        catch { /* ignore */ }
-    }
-
-    private void TrySetWindowSize(int width, int height)
-    {
-        try
-        {
-            var hwnd = WindowNative.GetWindowHandle(this);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            AppWindow.GetFromWindowId(windowId).Resize(new Windows.Graphics.SizeInt32(width, height));
-        }
-        catch { /* ignore */ }
     }
 
     /// <summary>Loads disk layout on a thread-pool thread, then updates UI on the dispatcher.</summary>
@@ -130,6 +96,7 @@ public sealed partial class PartitionManagementWindow : Window
     private void DiskCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         _partitionEntries.Clear();
+        ClearHardwareEraseProbe();
         if (DiskCombo.SelectedItem is not DiskInfo disk)
         {
             UpdateButtonStates(null);
@@ -604,58 +571,15 @@ public sealed partial class PartitionManagementWindow : Window
     }
 
     /// <summary>Shows a confirmation dialog before formatting. User must check a box to proceed.</summary>
-    private async Task<bool> ShowFormatConfirmDialogAsync(string driveLetter)
-    {
-        var message = $"You are about to format drive {driveLetter} as NTFS.\n\n"
-            + "All data on this drive will be permanently erased. This cannot be undone.";
+    private Task<bool> ShowFormatConfirmDialogAsync(string driveLetter)
+        => DestructiveConfirm.ConfirmWithAcknowledgementAsync(
+            Content.XamlRoot,
+            "Confirm format",
+            DestructiveConfirm.FormatVolumeMessage(driveLetter, "NTFS", freeSpaceOverwrite: false, wipePasses: 0),
+            "Format",
+            "I understand that all data will be permanently erased and I want to proceed");
 
-        var confirmCheckBox = new CheckBox
-        {
-            Content = "I understand that all data will be permanently erased and I want to proceed"
-        };
-        var errorText = new TextBlock
-        {
-            Text = "Please check the box above to confirm.",
-            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 180, 0, 0)),
-            Visibility = Visibility.Collapsed,
-            TextWrapping = TextWrapping.Wrap
-        };
-        var panel = new StackPanel { Spacing = 12 };
-        panel.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(confirmCheckBox);
-        panel.Children.Add(errorText);
-
-        var dialog = new ContentDialog
-        {
-            Title = "Confirm format",
-            Content = panel,
-            PrimaryButtonText = "Format",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = Content.XamlRoot
-        };
-
-        dialog.Closing += (s, e) =>
-        {
-            if (e.Result == ContentDialogResult.Primary && confirmCheckBox.IsChecked != true)
-            {
-                e.Cancel = true;
-                errorText.Visibility = Visibility.Visible;
-            }
-        };
-
-        var result = await dialog.ShowAsync();
-        return result == ContentDialogResult.Primary;
-    }
-
-    private static string FormatBytes(ulong bytes)
-    {
-        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
-        int o = 0;
-        double len = bytes;
-        while (len >= 1024 && o < sizes.Length - 1) { o++; len /= 1024; }
-        return $"{len:0.##} {sizes[o]}";
-    }
+    private static string FormatBytes(ulong bytes) => ByteFormatter.Format(bytes);
 
     private void PartitionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -703,6 +627,71 @@ public sealed partial class PartitionManagementWindow : Window
         }
     }
 
+    /// <summary>Shows success or the last diskpart output when an operation fails.</summary>
+    private void ShowDiskPartOutcome(bool ok, string successMessage)
+    {
+        if (ok)
+        {
+            ShowStatus(successMessage);
+            return;
+        }
+
+        string detail = DriveService.LastDiskPartOutput;
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            ShowStatus("Operation failed. Try running as administrator. See AppLog for details.", true);
+            return;
+        }
+
+        ShowStatus($"Failed: {TruncateForUi(detail)}", true);
+    }
+
+    private static string TruncateForUi(string text, int max = 280)
+        => text.Length <= max ? text : text[..max] + "…";
+
+    /// <summary>Bytes of free space immediately after <paramref name="part"/> on <paramref name="disk"/>.</summary>
+    private static ulong GetContiguousUnallocatedAfter(DiskInfo disk, PartitionInfo part)
+    {
+        ulong end = part.Offset + part.Size;
+        ulong nextStart = disk.Size;
+        foreach (var p in disk.Partitions)
+        {
+            if (p.Offset >= end && p.Offset < nextStart)
+            {
+                nextStart = p.Offset;
+            }
+        }
+
+        return nextStart > end ? nextStart - end : 0;
+    }
+
+    private async Task<bool> ConfirmSizeChangePreviewAsync(string title, string before, string after, string note)
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock { Text = $"Before: {before}", TextWrapping = TextWrapping.WrapWholeWords });
+        panel.Children.Add(new TextBlock { Text = $"After:  {after}", TextWrapping = TextWrapping.WrapWholeWords });
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = note,
+                TextWrapping = TextWrapping.WrapWholeWords,
+                Opacity = 0.8
+            });
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = panel,
+            PrimaryButtonText = "Apply",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
     private async void CreatePartitionButton_Click(object sender, RoutedEventArgs e)
     {
         var entry = PartitionList.SelectedItem as PartitionListEntry;
@@ -744,7 +733,7 @@ public sealed partial class PartitionManagementWindow : Window
         }
         else
         {
-            ShowStatus("Create failed. Try running as administrator.", true);
+            ShowDiskPartOutcome(false, string.Empty);
         }
     }
 
@@ -756,16 +745,11 @@ public sealed partial class PartitionManagementWindow : Window
             ShowStatus("Select a non-system partition to delete.", true);
             return;
         }
-        var confirm = new ContentDialog
-        {
-            Title = "Delete partition",
-            Content = $"Delete {entry.Partition.DisplayLabel}? All data will be lost.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = Content.XamlRoot
-        };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (!await DestructiveConfirm.ConfirmWithAcknowledgementAsync(
+                Content.XamlRoot,
+                "Delete partition",
+                DestructiveConfirm.DeletePartitionMessage(entry.Partition.DisplayLabel),
+                "Delete"))
         {
             return;
         }
@@ -779,7 +763,7 @@ public sealed partial class PartitionManagementWindow : Window
         }
         else
         {
-            ShowStatus("Delete failed. Try running as administrator.", true);
+            ShowDiskPartOutcome(false, string.Empty);
         }
     }
 
@@ -866,7 +850,9 @@ public sealed partial class PartitionManagementWindow : Window
 
         string newLetter = (combo.SelectedItem as string) ?? available[0];
         newLetter = newLetter.TrimEnd(':');
-        var ok = string.IsNullOrEmpty(part.DriveLetter) ? DriveService.AssignLetterToPartition(entry.DiskIndex, part.PartitionIndex, newLetter) : DriveService.TryAssignDriveLetter(currentLetter, newLetter);
+        var ok = string.IsNullOrEmpty(part.DriveLetter)
+            ? DriveService.AssignLetterToPartition(entry.DiskIndex, part.PartitionIndex, newLetter)
+            : DriveService.TryAssignDriveLetter(currentLetter, newLetter);
 
         HideStatus();
         if (ok)
@@ -876,7 +862,7 @@ public sealed partial class PartitionManagementWindow : Window
         }
         else
         {
-            ShowStatus("Failed. Try running as administrator.", true);
+            ShowDiskPartOutcome(false, string.Empty);
         }
     }
 
@@ -904,7 +890,7 @@ public sealed partial class PartitionManagementWindow : Window
         {
             Title = "Extend volume",
             Content = panel,
-            PrimaryButtonText = "Extend",
+            PrimaryButtonText = "Next",
             CloseButtonText = "Cancel",
             XamlRoot = Content.XamlRoot
         };
@@ -916,7 +902,44 @@ public sealed partial class PartitionManagementWindow : Window
         uint? sizeMb = null;
         if (!string.IsNullOrWhiteSpace(sizeBox.Text) && uint.TryParse(sizeBox.Text.Trim(), out uint s))
         {
-            sizeMb = s;
+            sizeMb = s == 0 ? null : s;
+        }
+
+        ulong before = entry.Partition.Size;
+        ulong addBytes;
+        string note;
+        if (DiskCombo.SelectedItem is DiskInfo disk)
+        {
+            ulong contiguous = GetContiguousUnallocatedAfter(disk, entry.Partition);
+            if (sizeMb is null or 0)
+            {
+                addBytes = contiguous;
+                note = contiguous == 0
+                    ? "No contiguous unallocated space was found after this partition. diskpart may still fail."
+                    : $"Uses all contiguous unallocated space after this partition ({FormatBytes(contiguous)}).";
+            }
+            else
+            {
+                addBytes = sizeMb.Value * 1024UL * 1024UL;
+                note = addBytes > contiguous && contiguous > 0
+                    ? $"Requested growth exceeds contiguous free space ({FormatBytes(contiguous)}). diskpart may fail."
+                    : "Extends into contiguous unallocated space after this partition.";
+            }
+        }
+        else
+        {
+            addBytes = (sizeMb ?? 0) * 1024UL * 1024UL;
+            note = "Preview uses the size you entered; actual growth depends on diskpart.";
+        }
+
+        ulong after = before + addBytes;
+        if (!await ConfirmSizeChangePreviewAsync(
+                "Preview extend",
+                $"{entry.Partition.DisplayLabel} — {FormatBytes(before)}",
+                $"{entry.Partition.DisplayLabel} — {FormatBytes(after)}",
+                note))
+        {
+            return;
         }
 
         HideStatus();
@@ -928,7 +951,7 @@ public sealed partial class PartitionManagementWindow : Window
         }
         else
         {
-            ShowStatus("Extend failed. Try running as administrator.", true);
+            ShowDiskPartOutcome(false, string.Empty);
         }
     }
 
@@ -943,7 +966,7 @@ public sealed partial class PartitionManagementWindow : Window
         int? volNum = DriveService.GetVolumeNumberForDriveLetter(entry.Partition.DriveLetter);
         if (volNum == null)
         {
-            ShowStatus("Could not get volume. Run the app as administrator for Extend/Shrink.", true); 
+            ShowStatus("Could not get volume. Run the app as administrator for Extend/Shrink.", true);
             return;
         }
         var sizeBox = new TextBox { PlaceholderText = "MB to shrink by", Width = 200 };
@@ -956,7 +979,7 @@ public sealed partial class PartitionManagementWindow : Window
         {
             Title = "Shrink volume",
             Content = panel,
-            PrimaryButtonText = "Shrink",
+            PrimaryButtonText = "Next",
             CloseButtonText = "Cancel",
             XamlRoot = Content.XamlRoot
         };
@@ -970,6 +993,25 @@ public sealed partial class PartitionManagementWindow : Window
             ShowStatus("Enter a valid size in MB.", true);
             return;
         }
+
+        ulong before = entry.Partition.Size;
+        ulong shrinkBytes = desiredMB * 1024UL * 1024UL;
+        if (shrinkBytes >= before)
+        {
+            ShowStatus("Shrink amount must be smaller than the current partition size.", true);
+            return;
+        }
+
+        ulong after = before - shrinkBytes;
+        if (!await ConfirmSizeChangePreviewAsync(
+                "Preview shrink",
+                $"{entry.Partition.DisplayLabel} — {FormatBytes(before)}",
+                $"{entry.Partition.DisplayLabel} — {FormatBytes(after)}",
+                "Creates unallocated space after the volume. Actual shrink may be limited by immovable files."))
+        {
+            return;
+        }
+
         HideStatus();
         bool ok = DriveService.ShrinkVolume(volNum.Value, desiredMB);
         if (ok)
@@ -979,7 +1021,7 @@ public sealed partial class PartitionManagementWindow : Window
         }
         else
         {
-            ShowStatus("Shrink failed. Try running as administrator.", true);
+            ShowDiskPartOutcome(false, string.Empty);
         }
     }
 
@@ -990,6 +1032,131 @@ public sealed partial class PartitionManagementWindow : Window
         if (DiskCombo.SelectedItem is DiskInfo d)
         {
             DiskCombo_SelectionChanged(DiskCombo, new SelectionChangedEventArgs(null, null));
+        }
+    }
+
+    private void ClearHardwareEraseProbe()
+    {
+        _hardwareEraseCapability = null;
+        if (HardwareEraseCapabilityText != null)
+        {
+            HardwareEraseCapabilityText.Text = "Select a disk and probe capabilities (admin recommended).";
+        }
+
+        if (HardwareEraseButton != null)
+        {
+            HardwareEraseButton.IsEnabled = false;
+        }
+    }
+
+    private void ProbeHardwareEraseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DiskCombo.SelectedItem is not DiskInfo disk)
+        {
+            ShowStatus("Select a disk first.", true);
+            return;
+        }
+
+        HideStatus();
+        try
+        {
+            _hardwareEraseCapability = HardwareEraseService.QueryCapabilities(disk.DiskIndex);
+            bool protectedDisk = disk.Partitions.Any(p => p.IsProtected);
+            HardwareEraseCapabilityText.Text =
+                $"Disk {disk.DiskIndex} ({_hardwareEraseCapability.Model})\n{_hardwareEraseCapability.Summary}"
+                + (protectedDisk ? "\nRefused: disk contains a protected volume." : string.Empty)
+                + (!_hardwareEraseCapability.CanAttemptHardwareErase
+                    ? "\nHardware erase button stays disabled until a usable method is available."
+                    : string.Empty);
+
+            HardwareEraseButton.IsEnabled =
+                _hardwareEraseCapability.CanAttemptHardwareErase
+                && !protectedDisk
+                && ElevationHelper.IsElevated;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Hardware erase probe failed.", ex, nameof(PartitionManagementWindow));
+            ShowStatus($"Probe failed: {ex.Message}", true);
+            ClearHardwareEraseProbe();
+        }
+    }
+
+    private async void HardwareEraseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (DiskCombo.SelectedItem is not DiskInfo disk || _hardwareEraseCapability == null)
+        {
+            ShowStatus("Probe capabilities first.", true);
+            return;
+        }
+
+        if (HardwareEraseAdvancedCheck?.IsChecked != true)
+        {
+            ShowStatus("Check the advanced acknowledgement box first.", true);
+            return;
+        }
+
+        if (!ElevationHelper.IsElevated)
+        {
+            ShowStatus("Run as Administrator for hardware erase.", true);
+            return;
+        }
+
+        if (disk.Partitions.Any(p => p.IsProtected) || !_hardwareEraseCapability.CanAttemptHardwareErase)
+        {
+            ShowStatus("Hardware erase is not allowed for this disk.", true);
+            return;
+        }
+
+        string eraseWord = $"ERASE-{disk.DiskIndex}";
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new TextBlock
+        {
+            Text =
+                $"This issues a controller hardware erase (NVMe Sanitize when available) for the ENTIRE Disk {disk.DiskIndex} ({disk.Model}).\n\n"
+                + $"{_hardwareEraseCapability.Summary}\n\n"
+                + "Not a certified wipe. Remapped cells may retain data. Type the confirmation phrase exactly:",
+            TextWrapping = TextWrapping.WrapWholeWords
+        });
+        var confirmBox = new TextBox { PlaceholderText = eraseWord, Width = 280 };
+        panel.Children.Add(confirmBox);
+
+        if (!await DestructiveConfirm.ConfirmWithAcknowledgementAsync(
+                Content.XamlRoot,
+                "Hardware erase — entire disk",
+                $"You are about to destroy all data on Disk {disk.DiskIndex}. This cannot be undone.",
+                "Continue"))
+        {
+            return;
+        }
+
+        var typeDialog = new ContentDialog
+        {
+            Title = "Type confirmation phrase",
+            Content = panel,
+            PrimaryButtonText = "Erase disk",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Content.XamlRoot
+        };
+        if (await typeDialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        if (!string.Equals(confirmBox.Text?.Trim(), eraseWord, StringComparison.Ordinal))
+        {
+            ShowStatus($"Confirmation phrase must be exactly: {eraseWord}", true);
+            return;
+        }
+
+        HideStatus();
+        ShowStatus("Submitting hardware erase…");
+        var (ok, message) = await HardwareEraseService.TryHardwareEraseAsync(disk.DiskIndex, _hardwareEraseCapability);
+        ShowStatus(message, !ok);
+        if (ok)
+        {
+            _ = LoadDisksAsync();
         }
     }
 }

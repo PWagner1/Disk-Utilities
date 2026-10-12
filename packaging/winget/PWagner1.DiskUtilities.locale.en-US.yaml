@@ -1,0 +1,28 @@
+PackageIdentifier: PWagner1.DiskUtilities
+PackageVersion: 0.0.0
+PackageLocale: en-US
+Publisher: Peter Wagner
+PublisherUrl: https://github.com/PWagner1
+PublisherSupportUrl: https://github.com/PWagner1/Disk-Utilities/issues
+Author: Peter Wagner
+PackageName: Disk Utilities
+PackageUrl: https://github.com/PWagner1/Disk-Utilities
+License: MIT
+LicenseUrl: https://github.com/PWagner1/Disk-Utilities/blob/main/LICENSE
+Copyright: Copyright (c) Peter Wagner
+ShortDescription: WinUI suite for disk format, health, foreign FS, usage, and handle locks
+Description: |-
+  Disk Utilities is an unpackaged WinUI 3 suite for Windows 10/11:
+  SuiteLauncher, DiskEraser, DiskHealth, DiskSeer, DriveStat, and HandleFinder.
+  Install the portable zip and run SuiteLauncher.exe. Some tools require Administrator.
+Moniker: disk-utilities
+Tags:
+  - disk
+  - format
+  - ntfs
+  - smart
+  - handles
+  - winui
+ReleaseNotesUrl: https://github.com/PWagner1/Disk-Utilities/releases
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

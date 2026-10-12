@@ -1,0 +1,29 @@
+<Project>
+  <!-- Shared defaults for all projects under Source/ -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU'">x64</Platform>
+    <PlatformTarget Condition="'$(PlatformTarget)' == ''">x64</PlatformTarget>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <UseWindowsAppSDK>true</UseWindowsAppSDK>
+
+    <!-- Central package versions (reference via $(PropertyName) in PackageReference) -->
+    <WindowsAppSdkVersion>2.5.1</WindowsAppSdkVersion>
+    <WindowsSdkBuildToolsVersion>10.0.28000.2705</WindowsSdkBuildToolsVersion>
+    <SystemManagementVersion>10.0.12</SystemManagementVersion>
+    <DiscUtilsVersion>0.16.13</DiscUtilsVersion>
+  </PropertyGroup>
+
+  <!-- Suite apps share repo-root bin\; shared library and tests keep project-local defaults unless overridden -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' != 'DiskUtilities.Shared' and !$(MSBuildProjectName.EndsWith('Tests'))">
+    <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
+    <WindowsAppSDKSelfContained Condition="'$(WindowsAppSDKSelfContained)' == ''">true</WindowsAppSDKSelfContained>
+    <RuntimeIdentifiers Condition="'$(RuntimeIdentifiers)' == ''">win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <BaseOutputPath>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\bin\'))</BaseOutputPath>
+  </PropertyGroup>
+</Project>

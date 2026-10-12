@@ -20,6 +20,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -35,6 +36,7 @@
             <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
                 <TextBlock Text="Health:" FontWeight="SemiBold" VerticalAlignment="Center" />
                 <TextBlock x:Name="SmartHealthText" Text="—" VerticalAlignment="Center" />
+                <TextBlock x:Name="DriveKindText" Text="" Opacity="0.7" VerticalAlignment="Center" />
             </StackPanel>
 
             <Border Grid.Row="2" x:Name="HealthCard" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
@@ -48,7 +50,35 @@
                 </StackPanel>
             </Border>
 
-            <Grid Grid.Row="3" Margin="0,0,0,4">
+            <Grid Grid.Row="3" ColumnSpacing="8" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="10">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Temperature" FontWeight="SemiBold" Opacity="0.8" />
+                        <TextBlock x:Name="TempCardText" Text="—" FontSize="22" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="10">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Available spare" FontWeight="SemiBold" Opacity="0.8" />
+                        <TextBlock x:Name="SpareCardText" Text="—" FontSize="22" />
+                        <TextBlock Text="NVMe SSD wear reserve" Opacity="0.7" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" BorderBrush="Gray" BorderThickness="1" CornerRadius="6" Padding="10">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Percentage used" FontWeight="SemiBold" Opacity="0.8" />
+                        <TextBlock x:Name="WearCardText" Text="—" FontSize="22" />
+                        <TextBlock Text="NVMe life used estimate" Opacity="0.7" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Grid Grid.Row="4" Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="80" />
                     <ColumnDefinition Width="*" />
@@ -63,9 +93,9 @@
                 <TextBlock Grid.Column="4" Text="Raw" FontWeight="SemiBold" Opacity="0.8" />
             </Grid>
 
-            <ListView Grid.Row="4"
+            <ListView Grid.Row="5"
                       x:Name="SmartAttributesList"
-                      MinHeight="300"
+                      MinHeight="240"
                       IsItemClickEnabled="False"
                       SelectionMode="None">
                 <ListView.ItemTemplate>

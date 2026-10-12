@@ -1,5 +1,8 @@
 #nullable enable
 
+using System.Diagnostics;
+using System.Threading;
+
 namespace DiskSeer.Services.Apfs;
 
 /// <summary>
@@ -10,8 +13,8 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
 {
     private IntPtr _container;
     private IntPtr _volume;
-    private string _tempFilePath;
-    private readonly string _volumeLabel = "APFS Volume";
+    private readonly string _tempFilePath;
+    private const string VOLUME_LABEL = "APFS Volume";
     private bool _disposed;
 
     private ApfsFileSystem(IntPtr container, IntPtr volume, string tempFilePath)
@@ -24,26 +27,51 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
     /// <summary>Returns true if libfsapfs is available.</summary>
     public static bool IsAvailable => LibFsApfsNative.IsAvailable;
 
+    /// <summary>Maximum partition size that will be staged to a temp file for libfsapfs.</summary>
+    public const long MaxTempCopyBytes = 128L * 1024 * 1024 * 1024; // 128 GB
+
     /// <summary>
     /// Creates an APFS file system from a stream (partition content).
-    /// Copies to a temporary file for libfsapfs (max 32 GB).
+    /// Stages to a temporary file for libfsapfs (up to <see cref="MaxTempCopyBytes"/>).
     /// </summary>
-    public static ApfsFileSystem? Open(Stream partitionStream)
+    public static ApfsFileSystem? Open(
+        Stream partitionStream,
+        IProgress<(long Copied, long Total)>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         if (!LibFsApfsNative.IsAvailable)
             return null;
 
-        const long maxSize = 32L * 1024 * 1024 * 1024; // 32 GB
-        if (partitionStream.Length > maxSize)
-            throw new NotSupportedException("APFS partition exceeds 32 GB limit for temp copy.");
+        long length = partitionStream.CanSeek ? partitionStream.Length : -1;
+        if (length > MaxTempCopyBytes)
+        {
+            throw new NotSupportedException(
+                $"APFS partition exceeds {MaxTempCopyBytes / (1024L * 1024 * 1024)} GB staging limit for libfsapfs temp copy.");
+        }
 
         var tempPath = Path.Combine(Path.GetTempPath(), "DiskSeer_apfs_" + Guid.NewGuid().ToString("N") + ".raw");
         try
         {
-            using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.Read))
+            using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.Read, 1024 * 1024, FileOptions.SequentialScan))
             {
                 partitionStream.Position = 0;
-                partitionStream.CopyTo(fs);
+                var buffer = new byte[1024 * 1024];
+                long copied = 0;
+                long total = length > 0 ? length : 0;
+                progress?.Report((0, total));
+                int read;
+                while ((read = partitionStream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    fs.Write(buffer, 0, read);
+                    copied += read;
+                    if (total <= 0)
+                    {
+                        total = copied;
+                    }
+
+                    progress?.Report((copied, total));
+                }
             }
 
             if (LibFsApfsNative.ContainerInitialize(out var container, out var err) != 1)
@@ -56,7 +84,15 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
             if (LibFsApfsNative.ContainerOpen(container, tempPath, accessFlags, out err) != 1)
             {
                 LibFsApfsNative.ContainerFree(ref container, ref err);
-                try { File.Delete(tempPath); } catch { }
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch (Exception e)
+                {
+                    // Ignore deletion errors, but log if needed
+                    Debug.Write("Failed to delete temporary file: " + tempPath);
+                }
                 return null;
             }
 
@@ -64,7 +100,7 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
             {
                 LibFsApfsNative.ContainerClose(container, out _);
                 LibFsApfsNative.ContainerFree(ref container, ref err);
-                try { File.Delete(tempPath); } catch { }
+                try { File.Delete(tempPath); } catch (Exception e) { Debug.Write("Failed to delete temporary file: " + tempPath); }
                 return null;
             }
 
@@ -72,7 +108,7 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
             {
                 LibFsApfsNative.ContainerClose(container, out _);
                 LibFsApfsNative.ContainerFree(ref container, ref err);
-                try { File.Delete(tempPath); } catch { }
+                try { File.Delete(tempPath); } catch (Exception e) { Debug.Write("Failed to delete temporary file: " + tempPath); }
                 return null;
             }
 
@@ -80,7 +116,7 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
         }
         catch
         {
-            try { File.Delete(tempPath); } catch { }
+            try { File.Delete(tempPath); } catch (Exception e) { Debug.Write("Failed to delete temporary file: " + tempPath); }
             throw;
         }
     }
@@ -179,13 +215,12 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
     {
         var entry = GetFileEntry(path);
         if (entry == IntPtr.Zero) throw new FileNotFoundException("Path not found.", path);
-        IntPtr err = IntPtr.Zero;
         if (IsDirectory(entry))
         {
             FreeEntry(entry);
             throw new FileNotFoundException("Cannot open directory as file.", path);
         }
-        if (LibFsApfsNative.FileEntryGetSize(entry, out var size, out err) != 1)
+        if (LibFsApfsNative.FileEntryGetSize(entry, out var size, out _) != 1)
         {
             FreeEntry(entry);
             throw new IOException("Failed to get file size.");
@@ -193,7 +228,7 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
         return new ApfsFileStream(entry, (long)size);
     }
 
-    public string GetVolumeLabel() => _volumeLabel;
+    public string GetVolumeLabel() => VOLUME_LABEL;
 
     public void CreateDirectory(string path) => throw new NotSupportedException("APFS is read-only.");
     public void DeleteFile(string path) => throw new NotSupportedException("APFS is read-only.");
@@ -218,7 +253,7 @@ public sealed class ApfsFileSystem : IForeignFileSystemAdapter
             LibFsApfsNative.ContainerFree(ref c, ref err);
             _container = IntPtr.Zero;
         }
-        try { File.Delete(_tempFilePath); } catch { }
+        try { File.Delete(_tempFilePath); } catch (Exception e) { Debug.Write("Failed to delete temporary file: " + _tempFilePath); }
         _disposed = true;
         GC.SuppressFinalize(this);
     }

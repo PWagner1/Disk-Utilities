@@ -25,13 +25,12 @@ public class ForeignPartitionInfo
     /// <summary>Windows drive letter if mounted, empty otherwise.</summary>
     public string DriveLetter { get; set; } = string.Empty;
 
-    /// <summary>True if this partition can be read by DiskSeer.</summary>
-    public bool IsSupported => FileSystemType switch
-    {
-        ForeignFileSystemType.Unknown => false,
-        ForeignFileSystemType.Apfs => ApfsFileSystem.IsAvailable,
-        _ => true
-    };
+    /// <summary>True if this partition type is recognized (APFS may still need libfsapfs to open).</summary>
+    public bool IsSupported => FileSystemType != ForeignFileSystemType.Unknown;
+
+    /// <summary>True when APFS is detected but libfsapfs is not loaded.</summary>
+    public bool NeedsApfsLibrary =>
+        FileSystemType == ForeignFileSystemType.Apfs && !ApfsFileSystem.IsAvailable;
 
     /// <summary>Display text for UI.</summary>
     public string DisplayText
@@ -40,7 +39,8 @@ public class ForeignPartitionInfo
         {
             var label = string.IsNullOrEmpty(Label) ? "No Label" : Label;
             var letter = string.IsNullOrEmpty(DriveLetter) ? "" : $" ({DriveLetter})";
-            return $"Partition {PartitionIndex + 1}{letter}: {label} - {FileSystemType} ({FormatSize(Size)})";
+            string apfsHint = NeedsApfsLibrary ? " [needs libfsapfs]" : "";
+            return $"Partition {PartitionIndex + 1}{letter}: {label} - {FileSystemType} ({FormatSize(Size)}){apfsHint}";
         }
     }
 

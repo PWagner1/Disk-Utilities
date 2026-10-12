@@ -1,0 +1,35 @@
+{
+  "version": "0.0.0",
+  "description": "WinUI suite for disk format, health, foreign FS, usage, and handle locks",
+  "homepage": "https://github.com/PWagner1/Disk-Utilities",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/PWagner1/Disk-Utilities/releases/download/v0.0.0/DiskUtilities-win-x64.zip",
+      "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "bin": [
+    "SuiteLauncher.exe",
+    [
+      "HandleFinder.exe",
+      "handlefinder"
+    ]
+  ],
+  "shortcuts": [
+    [
+      "SuiteLauncher.exe",
+      "Disk Utilities"
+    ]
+  ],
+  "checkver": {
+    "github": "https://github.com/PWagner1/Disk-Utilities"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/PWagner1/Disk-Utilities/releases/download/v$version/DiskUtilities-win-x64.zip"
+      }
+    }
+  }
+}

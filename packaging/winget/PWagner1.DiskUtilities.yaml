@@ -1,0 +1,7 @@
+# Template — use packaging/New-ManifestsFromTag.ps1 to emit a filled multi-file set.
+# PackageIdentifier: PWagner1.DiskUtilities
+PackageIdentifier: PWagner1.DiskUtilities
+PackageVersion: 0.0.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

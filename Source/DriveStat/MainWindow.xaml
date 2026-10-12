@@ -48,6 +48,7 @@
                               SelectionChanged="DriveCombo_SelectionChanged" />
                     <Button x:Name="BrowseButton" Content="Browse..." Click="BrowseButton_Click" />
                     <Button x:Name="ScanButton" Content="Scan" Click="ScanButton_Click" />
+                    <Button x:Name="ExportButton" Content="Export..." Click="ExportButton_Click" IsEnabled="False" ToolTipService.ToolTip="Export CSV or HTML report" />
                     <Button x:Name="HeatMapButton" Content="Heat map" Click="HeatMapButton_Click" IsEnabled="False" ToolTipService.ToolTip="Open heat map in new window (scan first)" />
                     <Button x:Name="CancelButton" Content="Cancel" Click="CancelButton_Click" Visibility="Collapsed" />
                 </StackPanel>
@@ -82,6 +83,12 @@
                                         <StackPanel.ContextFlyout>
                                             <MenuFlyout>
                                                 <MenuFlyoutItem Text="Open in Explorer" Click="OpenInExplorer_Click" />
+                                                <MenuFlyoutItem Text="Scan from here" Click="ScanFromHere_Click" />
+                                                <MenuFlyoutItem Text="What has this locked? (HandleFinder)" Click="OpenHandleFinder_Click" />
+                                                <MenuFlyoutSeparator />
+                                                <MenuFlyoutItem Text="Move to folder..." Click="MoveItem_Click" />
+                                                <MenuFlyoutItem Text="Move to Recycle Bin" Click="RecycleItem_Click" />
+                                                <MenuFlyoutItem Text="Delete permanently" Click="DeleteItem_Click" />
                                             </MenuFlyout>
                                         </StackPanel.ContextFlyout>
                                     </StackPanel>

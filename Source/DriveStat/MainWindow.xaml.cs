@@ -10,17 +10,35 @@ public sealed partial class MainWindow : Window
     private IReadOnlyDictionary<string, Windows.UI.Color> _extensionColorMap = new Dictionary<string, Windows.UI.Color>();
     private CancellationTokenSource? _scanCts;
 
-    public MainWindow()
+    public MainWindow(string? initialPath = null)
     {
         InitializeComponent();
-        TrySetMicaBackdrop();
-        TrySetExtendedTitleBar();
-        TrySetWindowSize(1400, 800);
+        WindowChrome.TryApplyMica(this);
+        WindowChrome.TryExtendTitleBar(this, AppTitleBar);
+        WindowChrome.TrySetSize(this, 1400, 800);
         ConfigureElevationBanner();
         LoadDrives();
         Treemap.RevealInExplorerRequested += Treemap_RevealInExplorerRequested;
         Treemap.FileInfoRequested += Treemap_FileInfoRequested;
         TreemapScrollViewer.PointerWheelChanged += TreemapScrollViewer_PointerWheelChanged;
+
+        if (!string.IsNullOrWhiteSpace(initialPath))
+        {
+            string path = initialPath.Trim().Trim('"');
+            if (Directory.Exists(path))
+            {
+                string trimmed = path.TrimEnd('\\', '/');
+                string name = Path.GetFileName(trimmed);
+                if (string.IsNullOrEmpty(name))
+                {
+                    name = trimmed;
+                }
+
+                DriveCombo.Items.Insert(0, new DriveComboItem(name, path, path));
+                DriveCombo.SelectedIndex = 0;
+                DispatcherQueue.TryEnqueue(() => ScanButton_Click(ScanButton, new RoutedEventArgs()));
+            }
+        }
     }
 
     private void ConfigureElevationBanner()
@@ -33,43 +51,6 @@ public sealed partial class MainWindow : Window
             RestartAsAdminButton,
             null,
             "Restart as Administrator to scan protected folders with fewer access errors.");
-    }
-
-    private void TrySetMicaBackdrop()
-    {
-        try
-        {
-            if (MicaController.IsSupported())
-            {
-                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-            }
-        }
-        catch
-        {
-            // Mica not supported
-        }
-    }
-
-    private void TrySetExtendedTitleBar()
-    {
-        try
-        {
-            ExtendsContentIntoTitleBar = true;
-            SetTitleBar(AppTitleBar);
-        }
-        catch { }
-    }
-
-    private void TrySetWindowSize(int width, int height)
-    {
-        try
-        {
-            var hwnd = WindowNative.GetWindowHandle(this);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            var appWindow = AppWindow.GetFromWindowId(windowId);
-            appWindow.Resize(new Windows.Graphics.SizeInt32(width, height));
-        }
-        catch { }
     }
 
     private void LoadDrives()
@@ -131,21 +112,7 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            _root = await ScanService.ScanAsync(path, progress, token);
-            _extensions = ScanService.BuildExtensionList(_root);
-            _extensionColorMap = _extensions.ToDictionary(ex => ex.Extension, ex => ex.Color);
-
-            PopulateTree();
-            ExtensionList.ItemsSource = _extensions;
-            Treemap.Root = _root;
-            Treemap.TreeRoot = _root;
-            Treemap.ExtensionColors = _extensionColorMap;
-            Treemap.ExtensionFilter = null;
-            ShowAllButton.Visibility = Visibility.Collapsed;
-
-            HeatMapButton.IsEnabled = true;
-            UpdateTreemapBackButtonVisibility();
-            StatusText.Text = $"Scan complete: {DirectoryNode.FormatSize(_root.Size)} in {_extensions.Sum(x => x.FileCount):N0} files.";
+            await ApplyScanResultAsync(path, progress, token);
         }
         catch (OperationCanceledException)
         {
@@ -161,6 +128,28 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task ApplyScanResultAsync(string path, IProgress<ScanProgress> progress, CancellationToken token)
+    {
+        _root = await ScanService.ScanAsync(path, progress, token);
+        var preferred = ExtensionColorStore.Load();
+        _extensions = ScanService.BuildExtensionList(_root, preferred);
+        ExtensionColorStore.Save(_extensions);
+        _extensionColorMap = _extensions.ToDictionary(ex => ex.Extension, ex => ex.Color);
+
+        PopulateTree();
+        ExtensionList.ItemsSource = _extensions;
+        Treemap.Root = _root;
+        Treemap.TreeRoot = _root;
+        Treemap.ExtensionColors = _extensionColorMap;
+        Treemap.ExtensionFilter = null;
+        ShowAllButton.Visibility = Visibility.Collapsed;
+
+        HeatMapButton.IsEnabled = true;
+        ExportButton.IsEnabled = true;
+        UpdateTreemapBackButtonVisibility();
+        StatusText.Text = $"Scan complete: {DirectoryNode.FormatSize(_root.Size)} in {_extensions.Sum(x => x.FileCount):N0} files.";
+    }
+
     private void HeatMapButton_Click(object sender, RoutedEventArgs e)
     {
         if (_root == null)
@@ -170,6 +159,42 @@ public sealed partial class MainWindow : Window
         }
         var heatMapWindow = new HeatMapWindow(_root);
         heatMapWindow.Activate();
+    }
+
+    private async void ExportButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_root == null)
+        {
+            StatusText.Text = "Scan a drive or folder first.";
+            return;
+        }
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        var hwnd = WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        picker.SuggestedFileName = "DriveStat-report";
+        picker.FileTypeChoices.Add("CSV report", [".csv"]);
+        picker.FileTypeChoices.Add("HTML report", [".html"]);
+
+        var file = await picker.PickSaveFileAsync();
+        if (file == null)
+        {
+            return;
+        }
+
+        try
+        {
+            string content = file.FileType.Equals(".html", StringComparison.OrdinalIgnoreCase)
+                ? ExportService.BuildHtml(_root, _extensions)
+                : ExportService.BuildCsv(_root, _extensions);
+            await Windows.Storage.FileIO.WriteTextAsync(file, content);
+            StatusText.Text = $"Exported report to {file.Path}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Export failed: {ex.Message}";
+            AppLog.Error("DriveStat export failed.", ex, nameof(MainWindow));
+        }
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
@@ -377,24 +402,211 @@ public sealed partial class MainWindow : Window
 
     private async void OpenInExplorer_Click(object sender, RoutedEventArgs e)
     {
-        DirectoryNode? dn = null;
-        if (DirectoryTree.SelectedItem is TreeViewNode tvn && tvn.Content is DirectoryNode d)
+        DirectoryNode? dn = GetContextDirectoryNode(sender);
+        if (dn == null)
         {
-            dn = d;
+            return;
         }
 
-        if (dn != null)
+        if (dn.IsDirectory && Directory.Exists(dn.FullPath))
         {
-            if (dn.IsDirectory && Directory.Exists(dn.FullPath))
+            await Windows.System.Launcher.LaunchFolderPathAsync(dn.FullPath);
+        }
+        else if (!dn.IsDirectory && File.Exists(dn.FullPath))
+        {
+            var uri = new Uri(dn.FullPath.StartsWith("\\\\") ? $"file:{dn.FullPath.Replace("\\", "/")}" : $"file:///{dn.FullPath.Replace("\\", "/")}");
+            await Windows.System.Launcher.LaunchUriAsync(uri);
+        }
+    }
+
+    private void ScanFromHere_Click(object sender, RoutedEventArgs e)
+    {
+        DirectoryNode? dn = GetContextDirectoryNode(sender);
+        if (dn == null || !dn.IsDirectory || !Directory.Exists(dn.FullPath))
+        {
+            StatusText.Text = "Select a folder to scan from here.";
+            return;
+        }
+
+        var item = new DriveComboItem(dn.Name, dn.FullPath, dn.FullPath);
+        DriveCombo.Items.Insert(0, item);
+        DriveCombo.SelectedIndex = 0;
+        ScanButton_Click(ScanButton, new RoutedEventArgs());
+    }
+
+    private void OpenHandleFinder_Click(object sender, RoutedEventArgs e)
+    {
+        DirectoryNode? dn = GetContextDirectoryNode(sender);
+        if (dn == null || string.IsNullOrWhiteSpace(dn.FullPath))
+        {
+            StatusText.Text = "Select an item first.";
+            return;
+        }
+
+        if (!SuiteApps.TryLaunchHandleFinderGui(dn.FullPath))
+        {
+            StatusText.Text = "Could not start HandleFinder. Build the suite into the same output folder.";
+            return;
+        }
+
+        StatusText.Text = "Started HandleFinder for this path.";
+    }
+
+    private async void MoveItem_Click(object sender, RoutedEventArgs e)
+    {
+        DirectoryNode? dn = GetContextDirectoryNode(sender);
+        if (dn == null)
+        {
+            StatusText.Text = "Select an item in the tree first.";
+            return;
+        }
+
+        if (_root != null && string.Equals(dn.FullPath, _root.FullPath, StringComparison.OrdinalIgnoreCase))
+        {
+            StatusText.Text = "Cannot move the scan root from here.";
+            return;
+        }
+
+        var picker = new Windows.Storage.Pickers.FolderPicker();
+        var hwnd = WindowNative.GetWindowHandle(this);
+        picker.FileTypeFilter.Add("*");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder == null)
+        {
+            return;
+        }
+
+        string dest = Path.Combine(folder.Path, dn.Name);
+        if (!await DestructiveConfirm.ConfirmAsync(
+                Content.XamlRoot,
+                "Move item?",
+                $"Move '{dn.Name}' to:\n{dest}",
+                "Move"))
+        {
+            return;
+        }
+
+        try
+        {
+            if (dn.IsDirectory)
             {
-                await Windows.System.Launcher.LaunchFolderPathAsync(dn.FullPath);
+                Directory.Move(dn.FullPath, dest);
             }
-            else if (!dn.IsDirectory && File.Exists(dn.FullPath))
+            else
             {
-                var uri = new Uri(dn.FullPath.StartsWith("\\\\") ? $"file:{dn.FullPath.Replace("\\", "/")}" : $"file:///{dn.FullPath.Replace("\\", "/")}");
-                await Windows.System.Launcher.LaunchUriAsync(uri);
+                File.Move(dn.FullPath, dest);
+            }
+
+            RemoveNodeFromTree(dn);
+            StatusText.Text = $"Moved to {dest}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Move failed: {ex.Message}";
+            AppLog.Warning("DriveStat move failed.", ex, nameof(MainWindow));
+        }
+    }
+
+    private async void RecycleItem_Click(object sender, RoutedEventArgs e)
+        => await DeleteSelectedAsync(sender, recycle: true);
+
+    private async void DeleteItem_Click(object sender, RoutedEventArgs e)
+        => await DeleteSelectedAsync(sender, recycle: false);
+
+    private async Task DeleteSelectedAsync(object sender, bool recycle)
+    {
+        DirectoryNode? dn = GetContextDirectoryNode(sender);
+        if (dn == null)
+        {
+            StatusText.Text = "Select an item in the tree first.";
+            return;
+        }
+
+        if (_root != null && string.Equals(dn.FullPath, _root.FullPath, StringComparison.OrdinalIgnoreCase))
+        {
+            StatusText.Text = "Cannot delete the scan root from here. Choose a child item.";
+            return;
+        }
+
+        string title = recycle ? "Move to Recycle Bin?" : "Delete permanently?";
+        string message = recycle
+            ? $"Move '{dn.Name}' to the Recycle Bin?\n\n{dn.FullPath}"
+            : $"Permanently delete '{dn.Name}'?\n\n{dn.FullPath}\n\nThis cannot be undone.";
+        string primary = recycle ? "Move to Recycle Bin" : "Delete permanently";
+
+        bool ok = recycle
+            ? await DestructiveConfirm.ConfirmAsync(Content.XamlRoot, title, message, primary)
+            : await DestructiveConfirm.ConfirmWithAcknowledgementAsync(Content.XamlRoot, title, message, primary);
+
+        if (!ok)
+        {
+            return;
+        }
+
+        bool success = recycle ? FileActions.TryRecycle(dn.FullPath) : FileActions.TryDeletePermanent(dn.FullPath);
+        if (!success)
+        {
+            StatusText.Text = recycle
+                ? "Could not move to Recycle Bin. The item may be in use or protected."
+                : "Could not delete. The item may be in use or protected.";
+            return;
+        }
+
+        RemoveNodeFromTree(dn);
+        StatusText.Text = recycle ? $"Moved to Recycle Bin: {dn.Name}" : $"Deleted: {dn.Name}";
+    }
+
+    private DirectoryNode? GetContextDirectoryNode(object sender)
+    {
+        if (sender is MenuFlyoutItem flyoutItem &&
+            flyoutItem.Parent is MenuFlyout { Target: FrameworkElement target })
+        {
+            if (target.DataContext is TreeViewNode tvn && tvn.Content is DirectoryNode fromTarget)
+            {
+                return fromTarget;
+            }
+
+            if (target.DataContext is DirectoryNode direct)
+            {
+                return direct;
             }
         }
+
+        if (DirectoryTree.SelectedItem is TreeViewNode selected && selected.Content is DirectoryNode dn)
+        {
+            return dn;
+        }
+
+        return null;
+    }
+
+    private void RemoveNodeFromTree(DirectoryNode dn)
+    {
+        DirectoryNode? refreshRoot = Treemap.Root;
+        if (dn.Parent != null)
+        {
+            dn.Parent.Children.Remove(dn);
+            for (DirectoryNode? p = dn.Parent; p != null; p = p.Parent)
+            {
+                p.Size = p.Children.Sum(c => c.IsHardLinkDuplicate ? 0 : c.Size);
+            }
+        }
+
+        if (_root != null)
+        {
+            var preferred = ExtensionColorStore.Load();
+            _extensions = ScanService.BuildExtensionList(_root, preferred);
+            ExtensionColorStore.Save(_extensions);
+            _extensionColorMap = _extensions.ToDictionary(ex => ex.Extension, ex => ex.Color);
+            ExtensionList.ItemsSource = _extensions;
+            Treemap.ExtensionColors = _extensionColorMap;
+            Treemap.TreeRoot = _root;
+            Treemap.Root = refreshRoot != null && refreshRoot != dn ? refreshRoot : _root;
+        }
+
+        PopulateTree();
+        UpdateTreemapBackButtonVisibility();
     }
 }
 

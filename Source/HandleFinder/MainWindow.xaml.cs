@@ -10,17 +10,23 @@ public sealed partial class MainWindow : Window
 {
     private readonly HandleService _handleService = new();
     private readonly ObservableCollection<HandleInfo> _handles = [];
+    private List<HandleInfo> _allHandles = [];
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _watchCts;
 
-    public MainWindow()
+    public MainWindow(string? initialPath = null)
     {
         InitializeComponent();
-        TrySetMicaBackdrop();
-        TrySetExtendedTitleBar();
-        TrySetWindowSize(900, 600);
+        WindowChrome.TryApplyMica(this);
+        WindowChrome.TryExtendTitleBar(this, AppTitleBar);
+        WindowChrome.TrySetSize(this, 980, 680);
         HandlesList.ItemsSource = _handles;
         ConfigureElevationBanner();
         LoadDrives();
+        if (!string.IsNullOrWhiteSpace(initialPath))
+        {
+            PathBox.Text = initialPath.Trim().Trim('"');
+        }
     }
 
     private void ConfigureElevationBanner()
@@ -53,40 +59,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void TrySetMicaBackdrop()
-    {
-        try
-        {
-            if (MicaController.IsSupported())
-            {
-                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-            }
-        }
-        catch { /* Mica not supported */ }
-    }
-
-    private void TrySetExtendedTitleBar()
-    {
-        try
-        {
-            ExtendsContentIntoTitleBar = true;
-            SetTitleBar(AppTitleBar);
-        }
-        catch { /* Fallback to default */ }
-    }
-
-    private void TrySetWindowSize(int width, int height)
-    {
-        try
-        {
-            var hwnd = WindowNative.GetWindowHandle(this);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            var appWindow = AppWindow.GetFromWindowId(windowId);
-            appWindow.Resize(new Windows.Graphics.SizeInt32(width, height));
-        }
-        catch { /* Ignore */ }
-    }
-
     private async void BrowseFolder_Click(object sender, RoutedEventArgs e)
     {
         var picker = new FolderPicker();
@@ -117,11 +89,15 @@ public sealed partial class MainWindow : Window
     }
 
     private async void FindButton_Click(object sender, RoutedEventArgs e)
+        => await RunSearchAsync(fromWatch: false);
+
+    private async Task RunSearchAsync(bool fromWatch)
     {
         var path = PathBox.Text?.Trim();
         if (string.IsNullOrEmpty(path))
         {
             StatusText.Text = "Please enter a drive, file, or folder path.";
+            StopWatch(updateToggle: true);
             return;
         }
 
@@ -134,42 +110,151 @@ public sealed partial class MainWindow : Window
         if (!IsValidPath(path))
         {
             StatusText.Text = $"Path not found: {path}";
+            StopWatch(updateToggle: true);
             return;
         }
 
         _cts?.Cancel();
         _cts = new CancellationTokenSource();
-        _handles.Clear();
-        FindButton.IsEnabled = false;
-        ProgressBar.Visibility = Visibility.Visible;
-        StatusText.Text = "Searching for handles...";
+        if (!fromWatch)
+        {
+            FindButton.IsEnabled = false;
+            ProgressBar.Visibility = Visibility.Visible;
+            StatusText.Text = "Searching for handles...";
+        }
 
         try
         {
             var results = await _handleService.FindHandlesForPathAsync(path!, false, _cts.Token);
+            _allHandles = results.ToList();
+            ApplyFilters();
 
-            foreach (var h in results)
+            string filterNote = _handles.Count != _allHandles.Count
+                ? $" (showing {_handles.Count} after filters)"
+                : string.Empty;
+
+            StatusText.Text = _allHandles.Count == 0
+                ? (fromWatch ? "Watch: path is clear — no locking handles." : "No processes found with handles to this path.")
+                : $"Found {_allHandles.Count} handle(s) from {_allHandles.Select(h => h.ProcessId).Distinct().Count()} process(es).{filterNote}";
+
+            if (fromWatch && _allHandles.Count == 0)
             {
-                _handles.Add(h);
+                StopWatch(updateToggle: true);
             }
-
-            StatusText.Text = results.Count == 0
-                ? "No processes found with handles to this path."
-                : $"Found {results.Count} handle(s) from {results.Select(h => h.ProcessId).Distinct().Count()} process(es).";
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = "Search cancelled.";
+            if (!fromWatch)
+            {
+                StatusText.Text = "Search cancelled.";
+            }
         }
         catch (Exception ex)
         {
             StatusText.Text = $"Error: {ex.Message}";
+            if (fromWatch)
+            {
+                StopWatch(updateToggle: true);
+            }
         }
         finally
         {
-            FindButton.IsEnabled = true;
-            ProgressBar.Visibility = Visibility.Collapsed;
+            if (!fromWatch)
+            {
+                FindButton.IsEnabled = true;
+                ProgressBar.Visibility = Visibility.Collapsed;
+            }
         }
+    }
+
+    private void Filter_Changed(object sender, object e) => ApplyFilters();
+
+    private void ApplyFilters()
+    {
+        string proc = ProcessFilterBox?.Text?.Trim() ?? string.Empty;
+        string pidText = PidFilterBox?.Text?.Trim() ?? string.Empty;
+        int? pidFilter = int.TryParse(pidText, out int pid) ? pid : null;
+        string typeTag = (TypeFilterCombo?.SelectedItem as ComboBoxItem)?.Tag as string ?? "all";
+
+        _handles.Clear();
+        foreach (var h in _allHandles)
+        {
+            if (!string.IsNullOrEmpty(proc) &&
+                h.ProcessName.IndexOf(proc, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                continue;
+            }
+
+            if (pidFilter is int p && h.ProcessId != p)
+            {
+                continue;
+            }
+
+            if (typeTag == "file" && h.ObjectTypeIndex != 28)
+            {
+                continue;
+            }
+
+            if (typeTag == "other" && h.ObjectTypeIndex == 28)
+            {
+                continue;
+            }
+
+            _handles.Add(h);
+        }
+    }
+
+    private async void WatchToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (WatchToggle.IsChecked != true)
+        {
+            StopWatch(updateToggle: false);
+            StatusText.Text = "Watch stopped.";
+            return;
+        }
+
+        _watchCts?.Cancel();
+        _watchCts = new CancellationTokenSource();
+        var token = _watchCts.Token;
+        ProgressBar.Visibility = Visibility.Visible;
+        StatusText.Text = "Watching… re-scanning until no handles remain.";
+
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await RunSearchAsync(fromWatch: true).ConfigureAwait(true);
+                if (token.IsCancellationRequested || _allHandles.Count == 0)
+                {
+                    break;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(2), token).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // stopped
+        }
+        finally
+        {
+            if (WatchToggle.IsChecked != true || _allHandles.Count == 0)
+            {
+                ProgressBar.Visibility = Visibility.Collapsed;
+            }
+        }
+    }
+
+    private void StopWatch(bool updateToggle)
+    {
+        _watchCts?.Cancel();
+        _watchCts = null;
+        if (updateToggle && WatchToggle != null)
+        {
+            WatchToggle.IsChecked = false;
+        }
+
+        ProgressBar.Visibility = Visibility.Collapsed;
     }
 
     private static bool IsValidPath(string path)
@@ -199,69 +284,76 @@ public sealed partial class MainWindow : Window
 
     private void HandlesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var hasSelection = HandlesList.SelectedItem != null;
+        var hasSelection = HandlesList.SelectedItems.Count > 0;
         CloseHandleButton.IsEnabled = hasSelection;
-        EndProcessButton.IsEnabled = hasSelection;
+        EndProcessButton.IsEnabled = HandlesList.SelectedItems.Count == 1;
     }
 
     private async void CloseHandleButton_Click(object sender, RoutedEventArgs e)
     {
-        if (HandlesList.SelectedItem is not HandleInfo handle)
+        var selected = HandlesList.SelectedItems.OfType<HandleInfo>().ToList();
+        if (selected.Count == 0)
         {
             return;
         }
 
-        var dialog = new ContentDialog
+        int closed = 0;
+        int failed = 0;
+        foreach (var handle in selected)
         {
-            Title = "Close handle?",
-            Content = $"Close the handle in '{handle.ProcessName}' (PID {handle.ProcessId})? The process will continue running; closing the handle may allow the file to be deleted or moved. The process could crash if it is actively using the file.",
-            PrimaryButtonText = "Close handle",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = Content.XamlRoot
-        };
+            if (!await DestructiveConfirm.ConfirmAsync(
+                    Content.XamlRoot,
+                    "Close handle?",
+                    DestructiveConfirm.CloseHandleMessage(handle.ProcessName, handle.ProcessId) +
+                    (selected.Count > 1 ? $"\n\n({closed + failed + 1} of {selected.Count})" : string.Empty),
+                    "Close handle"))
+            {
+                StatusText.Text = closed > 0
+                    ? $"Closed {closed} handle(s); remaining confirms cancelled."
+                    : "Close cancelled.";
+                break;
+            }
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
+            if (HandleService.TryCloseHandle(handle.ProcessId, handle.HandleValue))
+            {
+                _allHandles.Remove(handle);
+                _handles.Remove(handle);
+                closed++;
+            }
+            else
+            {
+                failed++;
+            }
         }
 
-        if (HandleService.TryCloseHandle(handle.ProcessId, handle.HandleValue))
+        if (closed > 0 || failed > 0)
         {
-            _handles.Remove(handle);
-            StatusText.Text = $"Handle closed. {handle.ProcessName} may need to be restarted if it was using the file.";
-        }
-        else
-        {
-            StatusText.Text = $"Could not close handle. The process may be protected, or this Windows version may not support it. Try ending the process instead.";
+            StatusText.Text = failed == 0
+                ? $"Closed {closed} handle(s). Processes may need a restart if they were using the file."
+                : $"Closed {closed}; failed {failed}. Protected processes may block close — try ending the process.";
         }
     }
 
     private async void EndProcessButton_Click(object sender, RoutedEventArgs e)
     {
-        if (HandlesList.SelectedItem is not HandleInfo handle)
+        if (HandlesList.SelectedItems.OfType<HandleInfo>().FirstOrDefault() is not HandleInfo handle)
         {
             return;
         }
 
-        var dialog = new ContentDialog
-        {
-            Title = "End process?",
-            Content = $"End process '{handle.ProcessName}' (PID {handle.ProcessId})? This may cause data loss or instability.",
-            PrimaryButtonText = "End process",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = Content.XamlRoot
-        };
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (!await DestructiveConfirm.ConfirmWithAcknowledgementAsync(
+                Content.XamlRoot,
+                "End process?",
+                DestructiveConfirm.EndProcessMessage(handle.ProcessName, handle.ProcessId),
+                "End process"))
         {
             return;
         }
 
         if (HandleService.TryTerminateProcess(handle.ProcessId))
         {
-            _handles.Remove(handle);
+            _allHandles.RemoveAll(h => h.ProcessId == handle.ProcessId);
+            ApplyFilters();
             StatusText.Text = $"Process {handle.ProcessName} (PID {handle.ProcessId}) ended.";
         }
         else
