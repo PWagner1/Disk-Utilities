@@ -2,6 +2,7 @@ namespace DriveStat.Services;
 
 /// <summary>
 /// Scans directories and builds the disk usage tree.
+/// Skips reparse-point directories (junctions/symlinks) and counts hard-linked file data once.
 /// </summary>
 public static class ScanService
 {
@@ -30,10 +31,11 @@ public static class ScanService
         var root = new DirectoryNode(Path.GetFileName(path) ?? path, path, 0, true, null);
         long totalSize = 0;
         int fileCount = 0;
+        var seenFileKeys = new HashSet<ulong>();
 
         await Task.Run(() =>
         {
-            ScanDirectory(path, root, ref totalSize, ref fileCount, progress, cancellationToken);
+            ScanDirectory(path, root, ref totalSize, ref fileCount, seenFileKeys, progress, cancellationToken);
         }, cancellationToken).ConfigureAwait(false);
 
         root.Size = totalSize;
@@ -46,6 +48,7 @@ public static class ScanService
         DirectoryNode parent,
         ref long totalSize,
         ref int fileCount,
+        HashSet<ulong> seenFileKeys,
         IProgress<ScanProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -66,11 +69,13 @@ public static class ScanService
             {
                 IgnoreInaccessible = true,
                 RecurseSubdirectories = false,
-                ReturnSpecialDirectories = false
+                ReturnSpecialDirectories = false,
+                AttributesToSkip = 0
             });
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            AppLog.Warning($"Skipping inaccessible directory: {path}", ex, nameof(ScanService));
             return;
         }
         catch (DirectoryNotFoundException)
@@ -94,10 +99,26 @@ public static class ScanService
                     // Ignore inaccessible files
                 }
 
-                var node = new DirectoryNode(fileInfo.Name, fileInfo.FullName, size, false, parent);
+                bool hardLinkDuplicate = false;
+                if (FileIdentity.TryGetFileKey(fileInfo.FullName, out ulong key))
+                {
+                    if (!seenFileKeys.Add(key))
+                    {
+                        hardLinkDuplicate = true;
+                    }
+                }
+
+                long countedSize = hardLinkDuplicate ? 0 : size;
+                var node = new DirectoryNode(fileInfo.Name, fileInfo.FullName, size, false, parent)
+                {
+                    IsHardLinkDuplicate = hardLinkDuplicate
+                };
                 parent.Children.Add(node);
-                totalSize += size;
-                fileCount++;
+                totalSize += countedSize;
+                if (!hardLinkDuplicate)
+                {
+                    fileCount++;
+                }
 
                 if (fileCount % 500 == 0)
                 {
@@ -106,11 +127,22 @@ public static class ScanService
             }
             else if (entry is DirectoryInfo subDir)
             {
-                var child = new DirectoryNode(subDir.Name, subDir.FullName, 0, true, parent);
+                bool reparse = FileIdentity.IsReparsePoint(subDir);
+                var child = new DirectoryNode(subDir.Name, subDir.FullName, 0, true, parent)
+                {
+                    IsReparsePoint = reparse
+                };
                 parent.Children.Add(child);
+
+                if (reparse)
+                {
+                    // Do not descend into junctions/symlinks (avoids cycles and double-counting).
+                    continue;
+                }
+
                 long subSize = 0;
                 int subCount = 0;
-                ScanDirectory(subDir.FullName, child, ref subSize, ref subCount, progress, cancellationToken);
+                ScanDirectory(subDir.FullName, child, ref subSize, ref subCount, seenFileKeys, progress, cancellationToken);
                 child.Size = subSize;
                 totalSize += subSize;
                 fileCount += subCount;
@@ -129,14 +161,17 @@ public static class ScanService
 
     /// <summary>
     /// Builds extension statistics from the tree.
+    /// Hard-link duplicates do not contribute size or file count.
     /// </summary>
-    public static List<ExtensionInfo> BuildExtensionList(DirectoryNode root)
+    public static List<ExtensionInfo> BuildExtensionList(
+        DirectoryNode root,
+        IReadOnlyDictionary<string, Windows.UI.Color>? preferredColors = null)
     {
         var extMap = new Dictionary<string, (long Size, int Count)>(StringComparer.OrdinalIgnoreCase);
 
         void Collect(DirectoryNode n)
         {
-            if (!n.IsDirectory)
+            if (!n.IsDirectory && !n.IsHardLinkDuplicate)
             {
                 var ext = string.IsNullOrEmpty(n.Extension) ? "(no extension)" : n.Extension.ToLowerInvariant();
                 if (extMap.TryGetValue(ext, out var existing))
@@ -170,9 +205,20 @@ public static class ScanService
             .ToList();
 
         var result = new List<ExtensionInfo>();
+        int paletteIndex = 0;
         for (int i = 0; i < list.Count; i++)
         {
-            var color = ExtensionColors[i % ExtensionColors.Length];
+            Windows.UI.Color color;
+            if (preferredColors != null && preferredColors.TryGetValue(list[i].Key, out var preferred))
+            {
+                color = preferred;
+            }
+            else
+            {
+                color = ExtensionColors[paletteIndex % ExtensionColors.Length];
+                paletteIndex++;
+            }
+
             result.Add(new ExtensionInfo(list[i].Key, list[i].Size, list[i].Count, list[i].Percentage, color));
         }
         return result;

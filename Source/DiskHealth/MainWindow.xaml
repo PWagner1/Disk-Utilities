@@ -14,8 +14,9 @@
             <TextBlock Text="Disk Health" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
         </Grid>
 
-        <Grid Grid.Row="1" Padding="24" RowSpacing="12" ColumnSpacing="12" Background="Transparent">
+        <Grid Grid.Row="1" Padding="24" RowSpacing="10" ColumnSpacing="12" Background="Transparent">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -23,24 +24,54 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0" Spacing="4">
-                <TextBlock Text="Scan a drive for recoverable files, view recovery chances, and recover selected files to a destination folder. Administrator privileges are required for scanning."
+            <Border x:Name="ElevationBanner" Grid.Row="0" Visibility="Collapsed" Margin="0,0,0,4">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ElevationBannerText" Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <Button x:Name="RestartAsAdminButton" Grid.Column="1" Content="Restart as administrator" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Spacing="4">
+                <TextBlock x:Name="ModeHelpText"
+                           Text="Signature carving scans raw drive data for known file headers. Use Recycle Bin or MFT deleted modes for undelete-style recovery. Administrator privileges are required for carve/MFT."
                            TextWrapping="Wrap" Opacity="0.8" />
+                <TextBlock Text="Recovery chance is a heuristic estimate only — results may be incomplete, false positives, or overwritten."
+                           TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
             </StackPanel>
 
-            <StackPanel Grid.Row="1" Spacing="8">
-                <TextBlock Text="Drive" FontWeight="SemiBold" />
+            <StackPanel Grid.Row="2" Spacing="8">
+                <TextBlock Text="Drive &amp; recovery mode" FontWeight="SemiBold" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ComboBox x:Name="DriveCombo"
                               PlaceholderText="Select a drive to scan..."
                               DisplayMemberPath="DisplayText"
-                              Width="280"
+                              Width="200"
                               SelectionChanged="DriveCombo_SelectionChanged" />
-                    <Button x:Name="ScanButton" Content="Scan for recoverable files" Click="ScanButton_Click" />
+                    <ComboBox x:Name="RecoveryModeCombo" Width="160" SelectedIndex="0" SelectionChanged="RecoveryModeCombo_SelectionChanged">
+                        <ComboBoxItem Content="Signature carve" Tag="carve" />
+                        <ComboBoxItem Content="Recycle Bin" Tag="recycle" />
+                        <ComboBoxItem Content="MFT deleted" Tag="mft" />
+                    </ComboBox>
+                    <ComboBox x:Name="ScanModeCombo" Width="130" SelectedIndex="0">
+                        <ComboBoxItem Content="Quick (8 GB)" Tag="quick" />
+                        <ComboBoxItem Content="Deep (full)" Tag="deep" />
+                    </ComboBox>
+                    <ComboBox x:Name="TypeFilterCombo" Width="120" SelectedIndex="0" SelectionChanged="TypeFilterCombo_SelectionChanged">
+                        <ComboBoxItem Content="All types" Tag="" />
+                    </ComboBox>
+                    <Button x:Name="ScanButton" Content="Scan" Click="ScanButton_Click" />
+                    <Button x:Name="PauseButton" Content="Pause" Click="PauseButton_Click" IsEnabled="False" />
+                    <Button x:Name="CancelScanButton" Content="Cancel" Click="CancelScanButton_Click" IsEnabled="False" />
+                    <Button x:Name="ImageVolumeButton" Content="Image volume…" Click="ImageVolumeButton_Click"
+                            ToolTipService.ToolTip="Optional read-only raw image of the volume (forensic-lite)" />
                 </StackPanel>
             </StackPanel>
 
-            <StackPanel Grid.Row="2" Spacing="8">
+            <StackPanel Grid.Row="3" Spacing="8">
                 <TextBlock Text="Recovery destination" FontWeight="SemiBold" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBox x:Name="DestinationBox"
@@ -51,53 +82,82 @@
                 </StackPanel>
             </StackPanel>
 
-            <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" Padding="12" CornerRadius="4">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
-                        <TextBlock Text="Recoverable files" FontWeight="SemiBold" />
-                        <CheckBox x:Name="SelectAllCheck" Content="Select all" IsChecked="True" Checked="SelectAllCheck_Changed" Unchecked="SelectAllCheck_Changed" />
-                        <TextBlock x:Name="FileCountText" Text="0 files found" Opacity="0.8" VerticalAlignment="Center" />
-                    </StackPanel>
-                    <ListView Grid.Row="1"
-                              x:Name="FileListView"
-                              MinHeight="200"
-                              SelectionMode="Multiple"
-                              CanDragItems="False"
-                              CanReorderItems="False"
-                              SelectionChanged="FileListView_SelectionChanged">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Padding="4,2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <CheckBox Grid.Column="0"
-                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                              VerticalAlignment="Center"
-                                              Margin="0,0,8,0" />
-                                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Grid.Column="2" Text="{Binding RecoveryChanceLabel}" VerticalAlignment="Center" Opacity="0.9" Margin="0,0,12,0" />
-                                    <TextBlock Grid.Column="3" Text="{Binding FileType}" VerticalAlignment="Center" Opacity="0.7" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </Grid>
-            </Border>
+            <Grid Grid.Row="4" ColumnSpacing="12" MinHeight="260">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="280" />
+                    <ColumnDefinition Width="260" MinWidth="200" />
+                </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Row="4" Spacing="8">
+                <Border Grid.Column="0" BorderBrush="Gray" BorderThickness="1" Padding="12" CornerRadius="4">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
+                            <TextBlock x:Name="CandidatesHeader" Text="Candidates" FontWeight="SemiBold" />
+                            <CheckBox x:Name="SelectAllCheck" Content="Select all" IsChecked="True" Checked="SelectAllCheck_Changed" Unchecked="SelectAllCheck_Changed" />
+                            <TextBlock x:Name="FileCountText" Text="0 files found" Opacity="0.8" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <ListView Grid.Row="1"
+                                  x:Name="FileListView"
+                                  MinHeight="200"
+                                  SelectionMode="Single"
+                                  CanDragItems="False"
+                                  CanReorderItems="False"
+                                  SelectionChanged="FileListView_SelectionChanged">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Padding="4,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="0,0,8,0" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding SourceLabel}" Opacity="0.65" FontSize="11" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" Text="{Binding RecoveryChanceLabel}" VerticalAlignment="Center" Opacity="0.9" Margin="0,0,12,0" />
+                                        <TextBlock Grid.Column="3" Text="{Binding FileType}" VerticalAlignment="Center" Opacity="0.7" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="1" BorderBrush="Gray" BorderThickness="1" Padding="12" CornerRadius="4">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Preview" FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="8">
+                                <Image x:Name="PreviewImage" Stretch="Uniform" MaxHeight="180" Visibility="Collapsed" />
+                                <TextBlock x:Name="PreviewText" Text="Select a candidate to preview (images and PDF headers)." TextWrapping="Wrap" Opacity="0.8" />
+                            </StackPanel>
+                        </ScrollViewer>
+                        <TextBlock Grid.Row="2" x:Name="PreviewMetaText" Text="" Opacity="0.7" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <StackPanel Grid.Row="5" Spacing="8">
                 <ProgressBar x:Name="ProgressBar" IsIndeterminate="True" Visibility="Collapsed" Value="0" Minimum="0" Maximum="100" />
                 <TextBlock x:Name="StatusText" Text="" TextWrapping="Wrap" Visibility="Collapsed" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button x:Name="RefreshButton" Content="Refresh drives" Click="RefreshButton_Click" />
                     <Button x:Name="RecoverButton" Content="Recover selected" Click="RecoverButton_Click" />
+                    <Button x:Name="ExportButton" Content="Export list..." Click="ExportButton_Click" IsEnabled="False" />
                     <Button x:Name="SmartStatsButton" Content="S.M.A.R.T. stats..." Click="SmartStatsButton_Click" />
                 </StackPanel>
             </StackPanel>

@@ -23,16 +23,17 @@ public sealed partial class SettingsWindow : Window
         _onSaved = onSaved;
 
         InitializeComponent();
-        TrySetMicaBackdrop();
-        TrySetExtendedTitleBar();
-        TrySetWindowSize(400, 577);
+        WindowChrome.TryApplyMica(this);
+        var titleBar = (Content as FrameworkElement)?.FindName("SettingsTitleBar") as UIElement;
+        WindowChrome.TryExtendTitleBar(this, titleBar);
+        WindowChrome.TrySetSize(this, 400, 577);
         LoadThemeOptions();
         LoadCurrentTheme();
         LoadColourPresets();
         LoadCurrentColours();
         UpdateColourPreviews();
         App.ApplyTheme(this);
-        WindowUtilities.TryDisableMaximizeBox(this);
+        WindowChrome.TryDisableMaximizeBox(this);
     }
 
     private void LoadThemeOptions()
@@ -71,43 +72,6 @@ public sealed partial class SettingsWindow : Window
         ApplyLoadedColour(AppSettings.GetSystemDriveColour(), SystemDriveColourCombo, SystemDriveColourPreview);
         ApplyLoadedColour(AppSettings.GetNoLetterColour(), NoLetterColourCombo, NoLetterColourPreview);
         ApplyLoadedColour(AppSettings.GetUnallocatedColour(), UnallocatedColourCombo, UnallocatedColourPreview);
-    }
-
-    /// <summary>Applies Mica backdrop on Windows 11; no-op on older Windows.</summary>
-    private void TrySetMicaBackdrop()
-    {
-        try
-        {
-            if (MicaController.IsSupported())
-            {
-                SystemBackdrop = new MicaBackdrop
-                {
-                    Kind = MicaKind.BaseAlt
-                };
-            }
-        }
-        catch
-        {
-            // Mica not supported (e.g. Windows 10)
-        }
-    }
-
-    /// <summary>Extends content into the title bar so Mica shows there; sets the drag region.</summary>
-    private void TrySetExtendedTitleBar()
-    {
-        try
-        {
-            var titleBar = (Content as FrameworkElement)?.FindName("SettingsTitleBar") as Grid;
-            if (titleBar != null)
-            {
-                ExtendsContentIntoTitleBar = true;
-                SetTitleBar(titleBar);
-            }
-        }
-        catch
-        {
-            // Fall back to default title bar
-        }
     }
 
     private static void SelectColour(ComboBox combo, string hex)
@@ -321,18 +285,4 @@ public sealed partial class SettingsWindow : Window
     {
         Close();
     }
-
-    private void TrySetWindowSize(int width, int height)
-    {
-        try
-        {
-            var hwnd = WindowNative.GetWindowHandle(this);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            var appWindow = AppWindow.GetFromWindowId(windowId);
-            appWindow.Resize(new Windows.Graphics.SizeInt32(width, height));
-        }
-        catch { /* ignore */ }
-    }
-
-    // Win32 interop for modifying window styles
 }

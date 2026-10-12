@@ -5,6 +5,7 @@ global using System.Diagnostics;
 global using System.Linq;
 global using DriveStat.Models;
 global using DriveStat.Services;
+global using DiskUtilities.Shared;
 global using Microsoft.UI;
 global using Microsoft.UI.Composition.SystemBackdrops;
 global using Microsoft.UI.Windowing;

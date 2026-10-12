@@ -61,6 +61,21 @@ public static class CliRunner
             }
         }
 
+        if (!ElevationHelper.IsElevated)
+        {
+            AllocConsole();
+            try
+            {
+                Console.Error.WriteLine("HandleFinder CLI requires Administrator privileges to enumerate handles.");
+                Console.Error.WriteLine("Right-click and Run as administrator, or relaunch from an elevated prompt.");
+                return 5;
+            }
+            finally
+            {
+                FreeConsole();
+            }
+        }
+
         // Normalize drive-only paths
         for (var i = 0; i < paths.Count; i++)
         {
@@ -145,6 +160,9 @@ public static class CliRunner
 
             if (kill && distinctByProcess.Count > 0)
             {
+                // CLI --kill is intentional no-prompt for automation; GUI requires acknowledgement.
+                Console.Error.WriteLine(
+                    $"Warning: --kill will terminate {distinctByProcess.Count} process(es) with no further confirmation.");
                 foreach (var h in distinctByProcess)
                 {
                     if (HandleService.TryTerminateProcess(h.ProcessId))
@@ -206,6 +224,7 @@ public static class CliRunner
 
             Usage:
               HandleFinder.exe <path> [path2 ...] [options]
+              HandleFinder.exe --gui [path]
               HandleFinder.exe --help
 
             Arguments:
@@ -213,7 +232,9 @@ public static class CliRunner
                         Multiple paths can be specified, separated by spaces.
 
             Options:
-              --kill, -k    Terminate all processes locking the specified files.
+              --gui, -g     Open the GUI (optional path pre-fills the search box).
+              --kill, -k    Terminate all locking processes (no confirmation prompt).
+                            Prefer ending apps from the GUI when possible.
               --json, -j    Output results in JSON format (for automation).
               --wait, -w    Block until the specified files are released.
                             Useful in build scripts.
@@ -221,11 +242,14 @@ public static class CliRunner
 
             Examples:
               HandleFinder.exe "C:\Users\Docs\report.docx"
+              HandleFinder.exe --gui "C:\LockedFolder"
               HandleFinder.exe --json "C:\File1.txt" "C:\Folder\File2.dll"
               HandleFinder.exe --wait "C:\bin\output.exe"
               HandleFinder.exe --kill "C:\LockedFile.dat"
 
-            Note: Run as Administrator to access all processes.
+            Notes:
+              Run as Administrator to access all processes.
+              --kill is for scripts and does not prompt; the GUI asks for acknowledgement.
             """);
     }
 }

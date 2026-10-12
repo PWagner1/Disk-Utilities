@@ -9,6 +9,7 @@ global using System.Security.Cryptography;
 global using Windows.Storage;
 global using DiskEraser.Models;
 global using DiskEraser.Services;
+global using DiskUtilities.Shared;
 global using Microsoft.UI;
 global using Microsoft.UI.Composition.SystemBackdrops;
 global using Microsoft.UI.Windowing;

@@ -14,6 +14,7 @@ global using DiscUtils.Streams;
 global using DiscUtils.Xfs;
 global using DiskSeer.Models;
 global using DiskSeer.Services;
+global using DiskUtilities.Shared;
 global using Microsoft.UI;
 global using Microsoft.UI.Composition.SystemBackdrops;
 global using Microsoft.UI.Windowing;

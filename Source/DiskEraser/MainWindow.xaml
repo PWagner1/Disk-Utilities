@@ -19,16 +19,28 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Spacing="4">
-            <TextBlock Text="Select a drive and file system, then format. The system drive (C:) cannot be formatted."
+        <Border x:Name="ElevationBanner" Grid.Row="0" Visibility="Collapsed" Margin="0,0,0,4">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ElevationBannerText" Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <Button x:Name="RestartAsAdminButton" Grid.Column="1" Content="Restart as administrator" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="1" Spacing="4">
+            <TextBlock Text="Select a drive and a Windows-supported file system, then format. System, boot, EFI, and recovery volumes cannot be formatted."
                        TextWrapping="Wrap" Opacity="0.8" />
         </StackPanel>
 
-        <StackPanel Grid.Row="1" Spacing="8">
+        <StackPanel Grid.Row="2" Spacing="8">
             <TextBlock Text="Drive" FontWeight="SemiBold" />
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <ComboBox x:Name="DriveCombo"
@@ -43,10 +55,10 @@
                          Width="80"
                          TextChanged="DriveLetterBox_TextChanged" />
             </StackPanel>
-            <TextBlock Text="Select a drive from the list or type a drive letter (e.g. D). C: cannot be formatted." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
+            <TextBlock Text="Select a drive from the list or type a drive letter (e.g. D). Protected volumes (C:, boot, EFI, recovery) cannot be formatted." TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
         </StackPanel>
 
-        <Grid Grid.Row="2" ColumnSpacing="12">
+        <Grid Grid.Row="3" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
@@ -61,6 +73,8 @@
                                   HorizontalAlignment="Stretch"
                                   SelectedIndex="0"
                                   SelectionChanged="FileSystemCombo_SelectionChanged" />
+                        <TextBlock Text="Enabled options work via Windows (WMI). Linux/Apple entries are shown disabled — stock Windows cannot format them without third-party tools."
+                                   TextWrapping="Wrap" Opacity="0.8" FontSize="12" />
                     </StackPanel>
                     <StackPanel Spacing="4">
                         <TextBlock Text="Volume label (optional)" FontWeight="SemiBold" />
@@ -80,9 +94,11 @@
                     <CheckBox x:Name="QuickFormatCheck" Content="Quick format (skip bad sector scan)" IsChecked="True" />
                     <CheckBox x:Name="CompressionCheck" Content="Compress files to save space (NTFS and supported file systems)" IsChecked="False" />
                     <StackPanel Spacing="4">
-                        <CheckBox x:Name="SecureDeletionCheck" Content="Secure deletion (overwrite free space before format)" IsChecked="False" />
+                        <CheckBox x:Name="SecureDeletionCheck" Content="Overwrite free space before format" IsChecked="False" />
+                        <TextBlock Text="Fills unused space with random data, then formats. This is not full-disk Secure Erase or NVMe Sanitize, and does not certify DoD/military compliance."
+                                   TextWrapping="Wrap" Opacity="0.8" FontSize="12" Margin="24,0,0,0" />
                         <StackPanel x:Name="SecureWipePresetPanel" Spacing="4" Margin="24,0,0,0" Opacity="0.7">
-                            <TextBlock Text="Wipe passes" FontWeight="SemiBold" />
+                            <TextBlock Text="Free-space overwrite passes" FontWeight="SemiBold" />
                             <ComboBox x:Name="SecureWipePresetCombo"
                                       PlaceholderText="Select passes..."
                                       HorizontalAlignment="Stretch"
@@ -102,7 +118,7 @@
             </StackPanel>
         </Grid>
 
-        <StackPanel Grid.Row="3" Spacing="8">
+        <StackPanel Grid.Row="4" Spacing="8">
             <ProgressBar x:Name="ProgressBar" IsIndeterminate="True" Visibility="Collapsed" Value="0" Minimum="0" Maximum="100" />
             <TextBlock x:Name="ProgressLabel" Text="" Visibility="Collapsed" />
             <TextBlock x:Name="StatusText" Text="" TextWrapping="Wrap" Visibility="Collapsed" />

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>disk-utilities</id>
+    <version>0.0.0</version>
+    <title>Disk Utilities</title>
+    <authors>Peter Wagner</authors>
+    <projectUrl>https://github.com/PWagner1/Disk-Utilities</projectUrl>
+    <licenseUrl>https://github.com/PWagner1/Disk-Utilities/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>WinUI suite for disk format, health, foreign FS, usage, and handle locks. Portable unpackaged apps from GitHub Releases.</description>
+    <summary>Disk Utilities suite (SuiteLauncher + tools)</summary>
+    <tags>disk format smart handles winui admin</tags>
+    <releaseNotes>See https://github.com/PWagner1/Disk-Utilities/releases</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

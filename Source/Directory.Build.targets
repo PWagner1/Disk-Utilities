@@ -1,0 +1,3 @@
+<Project>
+  <!-- Reserved for suite-wide targets (post-csproj). App output paths are set in Directory.Build.props. -->
+</Project>

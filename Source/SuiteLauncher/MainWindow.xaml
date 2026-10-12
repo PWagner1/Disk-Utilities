@@ -1,0 +1,90 @@
+<Window
+    x:Class="SuiteLauncher.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Disk Utilities">
+
+    <Grid Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="AppTitleBar" Height="48" Padding="24,0,120,0" Background="Transparent">
+            <TextBlock x:Name="TitleText" Text="Disk Utilities" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" Padding="24" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16" MaxWidth="720" HorizontalAlignment="Left">
+                <TextBlock x:Name="IntroText"
+                           Text="Choose a tool to launch. Apps that need Administrator will prompt via UAC when required."
+                           TextWrapping="Wrap" Opacity="0.85" />
+
+                <Border x:Name="ElevationBanner" Visibility="Collapsed" Margin="0,0,0,4">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ElevationBannerText" Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button x:Name="RestartAsAdminButton" Grid.Column="1" Content="Restart as administrator" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock Text="Theme" VerticalAlignment="Center" Opacity="0.8" />
+                    <ComboBox x:Name="ThemeCombo" Width="160" SelectionChanged="ThemeCombo_SelectionChanged">
+                        <ComboBoxItem Content="System default" Tag="Default" />
+                        <ComboBoxItem Content="Light" Tag="Light" />
+                        <ComboBoxItem Content="Dark" Tag="Dark" />
+                    </ComboBox>
+                    <CheckBox x:Name="AckCheck"
+                              Content="Prefer acknowledgement checkbox on destructive ops"
+                              Checked="AckCheck_Changed"
+                              Unchecked="AckCheck_Changed" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="InstallShellButton" Content="Install Explorer menus" Click="InstallShellButton_Click"
+                            ToolTipService.ToolTip="Add per-user context menus: What has this locked? / Analyze disk usage" />
+                    <Button x:Name="RemoveShellButton" Content="Remove Explorer menus" Click="RemoveShellButton_Click" />
+                    <TextBlock x:Name="ShellStatusText" VerticalAlignment="Center" Opacity="0.75" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <ItemsControl x:Name="AppList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="local:LauncherAppItem"
+                                      xmlns:local="using:SuiteLauncher">
+                            <Border Padding="16" Margin="0,0,0,12" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{x:Bind DisplayName}" FontSize="18" FontWeight="SemiBold" />
+                                        <TextBlock Text="{x:Bind Description}" TextWrapping="Wrap" Opacity="0.85" />
+                                        <TextBlock Text="{x:Bind ElevationHint}" TextWrapping="Wrap" FontSize="12" Opacity="0.7" />
+                                        <TextBlock Text="{x:Bind RelatedHint}" TextWrapping="Wrap" FontSize="12" Opacity="0.65" />
+                                        <TextBlock Text="{x:Bind StatusText}" TextWrapping="Wrap" FontSize="12"
+                                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                   Visibility="{x:Bind StatusVisible}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
+                                        <Button Content="Launch" Click="LaunchButton_Click" Tag="{x:Bind Id}" MinWidth="100" />
+                                        <Button Content="Launch elevated" Click="LaunchElevatedButton_Click" Tag="{x:Bind Id}"
+                                                MinWidth="100" Visibility="{x:Bind ElevateVisible}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock x:Name="FooterStatus" TextWrapping="Wrap" Opacity="0.75" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

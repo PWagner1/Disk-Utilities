@@ -265,7 +265,8 @@ public sealed class HandleService
         }
     }
 
-    private static string NormalizePath(string path)
+    /// <summary>Normalizes a path for handle comparison (full path, trimmed separators, upper-invariant).</summary>
+    public static string NormalizePath(string path)
     {
         try
         {
@@ -278,7 +279,12 @@ public sealed class HandleService
         }
     }
 
-    private static bool PathMatches(string target, string handlePath)
+    /// <summary>
+    /// Returns true if <paramref name="handlePath"/> is the same as <paramref name="target"/>
+    /// or is a child path when <paramref name="target"/> is treated as a directory prefix.
+    /// Both arguments should already be normalized via <see cref="NormalizePath"/>.
+    /// </summary>
+    public static bool PathMatches(string target, string handlePath)
     {
         // Exact match
         if (target.Equals(handlePath, StringComparison.OrdinalIgnoreCase))
@@ -340,8 +346,9 @@ public sealed class HandleService
 
             return status == 0;
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warning($"Failed to close handle 0x{handleValue:X} in PID {processId}.", ex, nameof(HandleService));
             return false;
         }
         finally
@@ -364,8 +371,9 @@ public sealed class HandleService
             process.Kill();
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warning($"Failed to terminate PID {processId}.", ex, nameof(HandleService));
             return false;
         }
     }

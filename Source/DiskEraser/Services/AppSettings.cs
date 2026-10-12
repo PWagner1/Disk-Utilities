@@ -13,6 +13,13 @@ public static class AppSettings
     private const string KeyNoLetterColour = "DiagramColourNoLetter";
     private const string KeyUnallocatedColour = "DiagramColourUnallocated";
     private const string KeyTheme = "AppTheme";
+    private const string KeyLastFileSystem = "FormatLastFileSystem";
+    private const string KeyLastVolumeLabel = "FormatLastVolumeLabel";
+    private const string KeyLastClusterSize = "FormatLastClusterSize";
+    private const string KeyLastQuickFormat = "FormatLastQuickFormat";
+    private const string KeyLastCompression = "FormatLastCompression";
+    private const string KeyLastSecureDeletion = "FormatLastSecureDeletion";
+    private const string KeyLastWipePresetIndex = "FormatLastWipePresetIndex";
 
     /// <summary>Theme values: Light, Dark, or Default (use system).</summary>
     public const string ThemeLight = "Light";
@@ -94,6 +101,58 @@ public static class AppSettings
     {
         SetString(KeyUnallocatedColour, value ?? DefaultUnallocatedColour);
     }
+
+    /// <summary>Last-used format file system name (e.g. NTFS).</summary>
+    public static string GetLastFileSystem() => GetString(KeyLastFileSystem, "NTFS");
+
+    /// <summary>Persists last-used format file system name.</summary>
+    public static void SetLastFileSystem(string? value) => SetString(KeyLastFileSystem, value ?? "NTFS");
+
+    /// <summary>Last-used volume label (may be empty).</summary>
+    public static string GetLastVolumeLabel() => GetString(KeyLastVolumeLabel, string.Empty);
+
+    /// <summary>Persists last-used volume label.</summary>
+    public static void SetLastVolumeLabel(string? value) => SetString(KeyLastVolumeLabel, value ?? string.Empty);
+
+    /// <summary>Last-used cluster size in bytes (0 = default).</summary>
+    public static uint GetLastClusterSize()
+        => uint.TryParse(GetString(KeyLastClusterSize, "0"), out uint v) ? v : 0;
+
+    /// <summary>Persists last-used cluster size in bytes.</summary>
+    public static void SetLastClusterSize(uint value) => SetString(KeyLastClusterSize, value.ToString());
+
+    /// <summary>Last-used quick format checkbox.</summary>
+    public static bool GetLastQuickFormat() => GetBool(KeyLastQuickFormat, defaultValue: true);
+
+    /// <summary>Persists last-used quick format checkbox.</summary>
+    public static void SetLastQuickFormat(bool value) => SetBool(KeyLastQuickFormat, value);
+
+    /// <summary>Last-used compression checkbox.</summary>
+    public static bool GetLastCompression() => GetBool(KeyLastCompression, defaultValue: false);
+
+    /// <summary>Persists last-used compression checkbox.</summary>
+    public static void SetLastCompression(bool value) => SetBool(KeyLastCompression, value);
+
+    /// <summary>Last-used free-space overwrite checkbox.</summary>
+    public static bool GetLastSecureDeletion() => GetBool(KeyLastSecureDeletion, defaultValue: false);
+
+    /// <summary>Persists last-used free-space overwrite checkbox.</summary>
+    public static void SetLastSecureDeletion(bool value) => SetBool(KeyLastSecureDeletion, value);
+
+    /// <summary>Last-used wipe preset index (0-based).</summary>
+    public static int GetLastWipePresetIndex()
+        => int.TryParse(GetString(KeyLastWipePresetIndex, "0"), out int v) ? Math.Max(0, v) : 0;
+
+    /// <summary>Persists last-used wipe preset index.</summary>
+    public static void SetLastWipePresetIndex(int value) => SetString(KeyLastWipePresetIndex, Math.Max(0, value).ToString());
+
+    private static bool GetBool(string key, bool defaultValue)
+    {
+        string s = GetString(key, defaultValue ? "1" : "0");
+        return s is "1" or "true" or "True";
+    }
+
+    private static void SetBool(string key, bool value) => SetString(key, value ? "1" : "0");
 
     private static string GetString(string key, string defaultValue)
     {

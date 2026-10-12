@@ -22,30 +22,23 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-
-        // Set up title bar
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
-
-        // Try to apply Mica backdrop
-        TrySetMicaBackdrop();
-
-        // Set window size
-        var hWnd = WindowNative.GetWindowHandle(this);
-        var windowId = Win32Interop.GetWindowIdFromWindow(hWnd);
-        var appWindow = AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new Windows.Graphics.SizeInt32(1400, 900));
-
-        // Initial drive refresh
+        WindowChrome.TryApplyMica(this, MicaKind.Base);
+        WindowChrome.TryExtendTitleBar(this, AppTitleBar);
+        WindowChrome.TrySetSize(this, 1400, 900);
+        ConfigureElevationBanner();
         RefreshDrives();
     }
 
-    private void TrySetMicaBackdrop()
+    private void ConfigureElevationBanner()
     {
-        if (MicaController.IsSupported())
-        {
-            SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
-        }
+        ElevationUi.StyleWarningBanner(ElevationBanner);
+        ElevationUi.ConfigureBanner(
+            ElevationBanner,
+            ElevationBannerText,
+            "Not running as Administrator. DiskSeer needs elevation for raw disk access to foreign file systems.",
+            RestartAsAdminButton,
+            null,
+            "Browsing Apple and Linux volumes needs Administrator rights for raw disk access.");
     }
 
     #region Drive Selection
@@ -56,6 +49,7 @@ public sealed partial class MainWindow : Window
         RefreshDrivesButton.IsEnabled = false;
         OperationProgress.IsIndeterminate = true;
         OperationProgress.Visibility = Visibility.Visible;
+        AppLog.ClearLastError();
 
         try
         {
@@ -88,9 +82,19 @@ public sealed partial class MainWindow : Window
                     });
                 }
 
-                StatusText.Text = _drives.Count > 0
-                    ? $"Found {_drives.Count} physical drive{(_drives.Count != 1 ? "s" : "")}"
-                    : "No drives found. Ensure you're running as administrator.";
+                if (_drives.Count > 0)
+                {
+                    StatusText.Text = $"Found {_drives.Count} physical drive{(_drives.Count != 1 ? "s" : "")}";
+                }
+                else
+                {
+                    string? error = AppLog.ConsumeLastError();
+                    StatusText.Text = !string.IsNullOrEmpty(error)
+                        ? error
+                        : ElevationHelper.IsElevated
+                            ? "No drives found."
+                            : "No drives found. Restart as Administrator — raw disk access requires elevation.";
+                }
             });
         }
         catch (OperationCanceledException)
@@ -99,6 +103,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            AppLog.Error("Drive scan failed.", ex, nameof(MainWindow));
             DispatcherQueue.TryEnqueue(() => StatusText.Text = $"Error scanning drives: {ex.Message}");
         }
         finally
@@ -130,10 +135,10 @@ public sealed partial class MainWindow : Window
 
             foreach (var partition in drive.Partitions)
             {
-                string status = partition.IsSupported ? "" : " [Not supported]";
+                // APFS without libfsapfs stays selectable so users get packaging help on Open.
                 PartitionCombo.Items.Add(new ComboBoxItem
                 {
-                    Content = partition.DisplayText + status,
+                    Content = partition.DisplayText,
                     Tag = partition,
                     IsEnabled = partition.IsSupported
                 });
@@ -165,15 +170,139 @@ public sealed partial class MainWindow : Window
         {
             _selectedPartition = partition;
             OpenPartitionButton.IsEnabled = partition.IsSupported;
+            UpdateCapabilityUi(partition);
 
-            if (!partition.IsSupported)
+            if (partition.NeedsApfsLibrary)
+            {
+                StatusText.Text = "APFS needs libfsapfs next to DiskSeer.exe — see banner for help.";
+            }
+            else if (!partition.IsSupported)
             {
                 StatusText.Text = $"{partition.FileSystemType} is not currently supported for browsing";
             }
             else
             {
-                StatusText.Text = $"Selected {partition.FileSystemType} partition - Click 'Open' to browse";
+                StatusText.Text = $"Selected {partition.FileSystemType} partition — Click Open to browse";
             }
+        }
+        else
+        {
+            UpdateCapabilityUi(null);
+        }
+    }
+
+    private void UpdateCapabilityUi(ForeignPartitionInfo? partition)
+    {
+        if (partition == null)
+        {
+            ApfsBanner.Visibility = Visibility.Collapsed;
+            CapabilityText.Text = "";
+            return;
+        }
+
+        CapabilityText.Text = FileSystemCapabilities.Describe(partition.FileSystemType);
+        if (partition.NeedsApfsLibrary)
+        {
+            ApfsBanner.Visibility = Visibility.Visible;
+            ApfsBannerText.Text = "APFS browsing needs libfsapfs. Place libfsapfs-1.dll (and dependencies) next to DiskSeer.exe, then refresh.";
+        }
+        else
+        {
+            ApfsBanner.Visibility = Visibility.Collapsed;
+        }
+
+        // APFS is always read-only; keep toggle on and disable turning it off.
+        if (partition.FileSystemType == ForeignFileSystemType.Apfs)
+        {
+            ReadOnlyToggle.IsOn = true;
+            ReadOnlyToggle.IsEnabled = false;
+        }
+        else
+        {
+            ReadOnlyToggle.IsEnabled = true;
+        }
+    }
+
+    private void ReadOnlyToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        UpdateWriteMenuState();
+        if (_selectedPartition != null)
+        {
+            CapabilityText.Text = FileSystemCapabilities.Describe(_selectedPartition.FileSystemType)
+                + (ReadOnlyToggle.IsOn
+                    ? " Read-only mode is on (recommended)."
+                    : " Read-only is off — writes use experimental DiscUtils support.");
+        }
+    }
+
+    private void UpdateWriteMenuState()
+    {
+        bool allowWrites = _driveService.CanAttemptWrites && !ReadOnlyToggle.IsOn;
+        // When no partition open yet, gate by toggle + FS type.
+        if (_selectedPartition != null && !_driveService.CanAttemptWrites)
+        {
+            allowWrites = !ReadOnlyToggle.IsOn
+                && FileSystemCapabilities.SupportsWriteAttempts(_selectedPartition.FileSystemType)
+                && _driveService.CurrentFileSystemType != ForeignFileSystemType.Unknown
+                && !_driveService.IsReadOnlySession;
+        }
+
+        // Prefer session state after open.
+        if (_driveService.CurrentFileSystemType != ForeignFileSystemType.Unknown)
+        {
+            allowWrites = _driveService.CanAttemptWrites;
+        }
+
+        CopyFromLocalMenuItem.IsEnabled = allowWrites;
+        NewFolderMenuItem.IsEnabled = allowWrites;
+        RenameMenuItem.IsEnabled = allowWrites;
+        DeleteMenuItem.IsEnabled = allowWrites;
+    }
+
+    private async void ApfsOpenDocsButton_Click(object sender, RoutedEventArgs e)
+    {
+        string docs = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Source", "DiskSeer", "Docs", "LIBFSAPFS_BUILD.md"));
+        // Prefer repo docs when running from bin\; also try content next to source via known relative paths.
+        string[] candidates =
+        [
+            Path.Combine(AppContext.BaseDirectory, "Docs", "LIBFSAPFS_BUILD.md"),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "DiskSeer", "Docs", "LIBFSAPFS_BUILD.md")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Source", "DiskSeer", "Docs", "LIBFSAPFS_BUILD.md")),
+            docs
+        ];
+
+        string? path = candidates.FirstOrDefault(File.Exists);
+        if (path == null)
+        {
+            StatusText.Text = "LIBFSAPFS_BUILD.md not found. See Source/DiskSeer/Docs/ in the repo.";
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Could not open docs: {ex.Message}";
+        }
+    }
+
+    private void ApfsShowPathButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            StatusText.Text = FileSystemCapabilities.GetApfsLibrarySearchHint().Replace('\n', ' ');
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{AppContext.BaseDirectory.TrimEnd('\\')}\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = ex.Message;
         }
     }
 
@@ -184,38 +313,89 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        ShowLoading("Opening partition...");
+        if (_selectedPartition.NeedsApfsLibrary)
+        {
+            ApfsBanner.Visibility = Visibility.Visible;
+            StatusText.Text = "Install libfsapfs before opening this APFS volume.";
+            await DestructiveConfirm.ConfirmAsync(
+                Content.XamlRoot,
+                "APFS library missing",
+                FileSystemCapabilities.Describe(ForeignFileSystemType.Apfs) + "\n\n" + FileSystemCapabilities.GetApfsLibrarySearchHint(),
+                "OK");
+            return;
+        }
+
+        bool readOnly = ReadOnlyToggle.IsOn || _selectedPartition.FileSystemType == ForeignFileSystemType.Apfs;
+        if (!readOnly && FileSystemCapabilities.SupportsWriteAttempts(_selectedPartition.FileSystemType))
+        {
+            bool proceed = await DestructiveConfirm.ConfirmWithAcknowledgementAsync(
+                Content.XamlRoot,
+                "Open with write access?",
+                FileSystemCapabilities.Describe(_selectedPartition.FileSystemType)
+                + "\n\nDiscUtils write support is experimental and can damage volumes. Prefer read-only unless you know the risk.",
+                "Open writable");
+            if (!proceed)
+            {
+                return;
+            }
+        }
+
+        ShowLoading(readOnly ? "Opening partition (read-only)..." : "Opening partition...");
+        _operationCts = new CancellationTokenSource();
+        var progress = new Progress<(long Copied, long Total)>(p =>
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (p.Total > 0)
+                {
+                    LoadingText.Text = $"Staging APFS for libfsapfs… {p.Copied * 100 / p.Total}%";
+                    OperationProgress.Visibility = Visibility.Visible;
+                    OperationProgress.IsIndeterminate = false;
+                    OperationProgress.Value = p.Copied * 100.0 / p.Total;
+                }
+            });
+        });
 
         try
         {
-            bool success = await Task.Run(() =>
-                _driveService.OpenPartition(_selectedDrive.DriveIndex, _selectedPartition.PartitionIndex));
+            await Task.Run(() =>
+                _driveService.OpenPartition(
+                    _selectedDrive.DriveIndex,
+                    _selectedPartition.PartitionIndex,
+                    readOnly,
+                    progress,
+                    _operationCts.Token));
 
-            if (success)
-            {
-                _currentPath = "/";
-                _backHistory.Clear();
-                _forwardHistory.Clear();
-                UpdateNavigationButtons();
+            _currentPath = "/";
+            _backHistory.Clear();
+            _forwardHistory.Clear();
+            UpdateNavigationButtons();
+            UpdateWriteMenuState();
 
-                // Update volume info
-                VolumeLabelText.Text = $"Label: {_driveService.GetVolumeLabel()}";
-                VolumeTypeText.Text = $"Type: {_selectedPartition.FileSystemType}";
-                VolumeSizeText.Text = $"Size: {FormatSize(_selectedPartition.Size)}";
+            VolumeLabelText.Text = $"Label: {_driveService.GetVolumeLabel()}";
+            VolumeTypeText.Text = $"Type: {_selectedPartition.FileSystemType}"
+                + (_driveService.IsReadOnlySession ? " (read-only)" : " (writable session)");
+            VolumeSizeText.Text = $"Size: {FormatSize(_selectedPartition.Size)}";
 
-                await LoadDirectoryAsync(_currentPath);
-                StatusText.Text = $"Opened {_selectedPartition.FileSystemType} partition";
-            }
-            else
-            {
-                ShowEmptyState();
-                StatusText.Text = "Failed to open partition. Make sure you're running as administrator.";
-            }
+            await LoadDirectoryAsync(_currentPath);
+            StatusText.Text = $"Opened {_selectedPartition.FileSystemType}"
+                + (_driveService.IsReadOnlySession ? " read-only" : "");
+        }
+        catch (OperationCanceledException)
+        {
+            ShowEmptyState();
+            StatusText.Text = "Open cancelled.";
         }
         catch (Exception ex)
         {
             ShowEmptyState();
             StatusText.Text = $"Error opening partition: {ex.Message}";
+            AppLog.Warning("Open partition failed.", ex, nameof(MainWindow));
+        }
+        finally
+        {
+            OperationProgress.Visibility = Visibility.Collapsed;
+            _operationCts = null;
         }
     }
 
@@ -449,7 +629,60 @@ public sealed partial class MainWindow : Window
 
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
+        if (RecursiveSearchCheck.IsChecked == true)
+        {
+            return; // Wait for QuerySubmitted for recursive searches
+        }
+
         ApplyFilter();
+    }
+
+    private async void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        string query = (args.QueryText ?? SearchBox.Text)?.Trim() ?? "";
+        if (string.IsNullOrEmpty(query))
+        {
+            ApplyFilter();
+            return;
+        }
+
+        if (RecursiveSearchCheck.IsChecked != true)
+        {
+            ApplyFilter();
+            return;
+        }
+
+        ShowLoading($"Searching for '{query}'...");
+        _operationCts = new CancellationTokenSource();
+        try
+        {
+            var results = await _driveService.SearchAsync(
+                _currentPath,
+                query,
+                recursive: true,
+                new Progress<string>(p => DispatcherQueue.TryEnqueue(() => LoadingText.Text = $"Searching {p}")),
+                _operationCts.Token);
+
+            _filteredEntries = results;
+            FileListView.ItemsSource = _filteredEntries;
+            HideLoading();
+            FileListView.Visibility = Visibility.Visible;
+            StatusText.Text = $"Recursive search: {results.Count} match{(results.Count == 1 ? "" : "es")} for '{query}'";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText.Text = "Search cancelled.";
+            HideLoading();
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Search failed: {ex.Message}";
+            HideLoading();
+        }
+        finally
+        {
+            _operationCts = null;
+        }
     }
 
     private void ApplyFilter()
@@ -661,6 +894,11 @@ public sealed partial class MainWindow : Window
 
     private async void CopyFromLocalMenuItem_Click(object sender, RoutedEventArgs e)
     {
+        if (!EnsureWritesAllowed())
+        {
+            return;
+        }
+
         var picker = new FileOpenPicker();
         picker.SuggestedStartLocation = PickerLocationId.Downloads;
         picker.FileTypeFilter.Add("*");
@@ -733,8 +971,58 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void FileListView_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        var files = e.Items.OfType<FileSystemEntry>().Where(i => !i.IsDirectory).Take(5).ToList();
+        if (files.Count == 0)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        try
+        {
+            string staging = Path.Combine(Path.GetTempPath(), "DiskSeer", "drag", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(staging);
+            var storageFiles = new List<Windows.Storage.IStorageItem>();
+            foreach (var file in files)
+            {
+                string dest = Path.Combine(staging, file.Name);
+                await _driveService.CopyFileToLocalAsync(file.FullPath, dest, null, CancellationToken.None);
+                storageFiles.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(dest));
+            }
+
+            e.Data.SetStorageItems(storageFiles);
+            e.Data.RequestedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+            StatusText.Text = $"Dragging {storageFiles.Count} file(s) (staged copy for Explorer).";
+        }
+        catch (Exception ex)
+        {
+            e.Cancel = true;
+            StatusText.Text = $"Drag failed: {ex.Message}";
+        }
+    }
+
+    private bool EnsureWritesAllowed()
+    {
+        if (_driveService.CanAttemptWrites)
+        {
+            return true;
+        }
+
+        StatusText.Text = _driveService.IsReadOnlySession || ReadOnlyToggle.IsOn
+            ? "Read-only mode is on. Turn it off and reopen the partition to attempt writes (experimental)."
+            : "Writes are not supported for this file system (e.g. APFS).";
+        return false;
+    }
+
     private async void NewFolderMenuItem_Click(object sender, RoutedEventArgs e)
     {
+        if (!EnsureWritesAllowed())
+        {
+            return;
+        }
+
         var dialog = new ContentDialog
         {
             Title = "New Folder",
@@ -770,6 +1058,11 @@ public sealed partial class MainWindow : Window
 
     private async void RenameMenuItem_Click(object sender, RoutedEventArgs e)
     {
+        if (!EnsureWritesAllowed())
+        {
+            return;
+        }
+
         if (FileListView.SelectedItem is not FileSystemEntry entry)
         {
             return;
@@ -814,24 +1107,22 @@ public sealed partial class MainWindow : Window
 
     private async void DeleteMenuItem_Click(object sender, RoutedEventArgs e)
     {
+        if (!EnsureWritesAllowed())
+        {
+            return;
+        }
+
         var selectedItems = FileListView.SelectedItems.Cast<FileSystemEntry>().ToList();
         if (selectedItems.Count == 0)
         {
             return;
         }
 
-        var dialog = new ContentDialog
-        {
-            Title = "Delete",
-            Content = $"Are you sure you want to delete {selectedItems.Count} item{(selectedItems.Count != 1 ? "s" : "")}?\n\nThis action cannot be undone.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
-            XamlRoot = Content.XamlRoot
-        };
-
-        var result = await dialog.ShowAsync();
-
-        if (result == ContentDialogResult.Primary)
+        if (await DestructiveConfirm.ConfirmWithAcknowledgementAsync(
+                Content.XamlRoot,
+                "Delete",
+                DestructiveConfirm.DeleteItemsMessage(selectedItems.Count),
+                "Delete"))
         {
             try
             {

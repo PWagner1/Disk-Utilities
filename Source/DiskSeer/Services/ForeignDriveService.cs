@@ -18,6 +18,20 @@ public sealed class ForeignDriveService : IDisposable
     private Disk? _currentDisk;
     private IForeignFileSystemAdapter? _currentFileSystem;
     private Stream? _currentPartitionStream;
+    private ForeignFileSystemType _currentFileSystemType = ForeignFileSystemType.Unknown;
+    private bool _openedReadOnly = true;
+
+    /// <summary>File system type of the currently open partition, or Unknown.</summary>
+    public ForeignFileSystemType CurrentFileSystemType => _currentFileSystemType;
+
+    /// <summary>True when the current session was opened read-only (or APFS).</summary>
+    public bool IsReadOnlySession => _openedReadOnly || _currentFileSystemType == ForeignFileSystemType.Apfs;
+
+    /// <summary>True when write menu actions may be attempted (still DiscUtils-limited).</summary>
+    public bool CanAttemptWrites =>
+        _currentFileSystem != null
+        && !_openedReadOnly
+        && FileSystemCapabilities.SupportsWriteAttempts(_currentFileSystemType);
 
     static ForeignDriveService()
     {
@@ -60,9 +74,9 @@ public sealed class ForeignDriveService : IDisposable
                 {
                     DetectForeignPartitions(driveInfo);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Continue with empty partition list if detection fails
+                    AppLog.Warning($"Foreign partition detection failed for disk {diskIndex}.", ex, nameof(ForeignDriveService));
                 }
 
                 // Only add drives that have at least one foreign file system partition
@@ -72,9 +86,9 @@ public sealed class ForeignDriveService : IDisposable
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Return empty list on WMI or permission errors
+            AppLog.Error("Failed to enumerate foreign drives via WMI.", ex, nameof(ForeignDriveService));
         }
 
         return drives;
@@ -123,8 +137,9 @@ public sealed class ForeignDriveService : IDisposable
                 driveMeta.Add((diskIndex, diskSize, model));
             }
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Error("Failed to list physical drives via WMI.", ex, nameof(ForeignDriveService));
             return new List<ForeignDriveInfo>();
         }
 
@@ -174,9 +189,9 @@ public sealed class ForeignDriveService : IDisposable
                 {
                     DetectForeignPartitions(driveInfo);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Leave partition list empty
+                    AppLog.Warning($"Foreign partition detection failed for disk {diskIndex}.", ex, nameof(ForeignDriveService));
                 }
                 results[i] = driveInfo;
             });
@@ -185,9 +200,9 @@ public sealed class ForeignDriveService : IDisposable
         {
             // Return partial results
         }
-        catch
+        catch (Exception ex)
         {
-            // Return whatever we have
+            AppLog.Warning("Parallel drive scan ended with errors; returning partial results.", ex, nameof(ForeignDriveService));
         }
 
         return results.Where(d => d != null).Cast<ForeignDriveInfo>().OrderBy(d => d.DriveIndex).ToList();
@@ -414,22 +429,45 @@ public sealed class ForeignDriveService : IDisposable
 
     /// <summary>
     /// Opens a partition for browsing. Must be called before GetDirectoryContents or file operations.
+    /// APFS is always opened read-only. When <paramref name="readOnly"/> is true (recommended default),
+    /// the physical disk is opened with <see cref="FileAccess.Read"/> only.
     /// </summary>
-    /// <param name="driveIndex">Physical drive index.</param>
-    /// <param name="partitionIndex">Partition index within the drive.</param>
-    /// <returns>True if opened successfully.</returns>
-    public bool OpenPartition(int driveIndex, int partitionIndex)
+    public bool OpenPartition(int driveIndex, int partitionIndex, bool readOnly = true)
+        => OpenPartitionCore(driveIndex, partitionIndex, readOnly, progress: null, CancellationToken.None);
+
+    /// <summary>
+    /// Opens a partition with optional APFS temp-copy progress.
+    /// </summary>
+    public bool OpenPartition(
+        int driveIndex,
+        int partitionIndex,
+        bool readOnly,
+        IProgress<(long Copied, long Total)>? progress,
+        CancellationToken cancellationToken)
+        => OpenPartitionCore(driveIndex, partitionIndex, readOnly, progress, cancellationToken);
+
+    /// <summary>Opens a partition in read-only mode.</summary>
+    public bool OpenPartitionReadOnly(int driveIndex, int partitionIndex)
+        => OpenPartition(driveIndex, partitionIndex, readOnly: true);
+
+    private bool OpenPartitionCore(
+        int driveIndex,
+        int partitionIndex,
+        bool readOnly,
+        IProgress<(long Copied, long Total)>? progress,
+        CancellationToken cancellationToken)
     {
         CloseCurrentPartition();
 
         try
         {
             string diskPath = $@"\\.\PhysicalDrive{driveIndex}";
-            _currentDisk = new Disk(diskPath, FileAccess.ReadWrite);
+            // APFS and explicit read-only sessions never open the disk for write.
+            var access = readOnly ? FileAccess.Read : FileAccess.ReadWrite;
+            _currentDisk = new Disk(diskPath, access);
 
             if (_currentDisk.Partitions == null || _currentDisk.Partitions.Count == 0)
             {
-                // Whole disk is the file system
                 _currentPartitionStream = _currentDisk.Content;
             }
             else if (partitionIndex < _currentDisk.Partitions.Count)
@@ -443,6 +481,8 @@ public sealed class ForeignDriveService : IDisposable
 
             var fsType = DetectFileSystemType(_currentPartitionStream);
             _currentPartitionStream.Position = 0;
+            _currentFileSystemType = fsType;
+            _openedReadOnly = readOnly || fsType == ForeignFileSystemType.Apfs;
 
             _currentFileSystem = fsType switch
             {
@@ -452,76 +492,81 @@ public sealed class ForeignDriveService : IDisposable
                 ForeignFileSystemType.HfsPlus => new DiscUtilsAdapter(new HfsPlusFileSystem(_currentPartitionStream)),
                 ForeignFileSystemType.Btrfs => new DiscUtilsAdapter(new BtrfsFileSystem(_currentPartitionStream)),
                 ForeignFileSystemType.Xfs => new DiscUtilsAdapter(new XfsFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.Apfs => OpenApfsOrThrow(_currentPartitionStream!),
+                ForeignFileSystemType.Apfs => OpenApfsOrThrow(_currentPartitionStream!, progress, cancellationToken),
                 _ => throw new NotSupportedException($"File system type {fsType} is not supported for browsing.")
             };
 
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            AppLog.Warning("Failed to open foreign partition.", ex, nameof(ForeignDriveService));
             CloseCurrentPartition();
-            return false;
+            throw;
         }
     }
 
-    private static IForeignFileSystemAdapter OpenApfsOrThrow(Stream partitionStream)
+    private static IForeignFileSystemAdapter OpenApfsOrThrow(
+        Stream partitionStream,
+        IProgress<(long Copied, long Total)>? progress,
+        CancellationToken cancellationToken)
     {
         if (!ApfsFileSystem.IsAvailable)
-            throw new NotSupportedException("APFS requires libfsapfs. See Docs/LIBFSAPFS_BUILD.md to build libfsapfs.dll.");
-        var apfs = ApfsFileSystem.Open(partitionStream);
+        {
+            throw new NotSupportedException(
+                "APFS browsing requires libfsapfs. " + FileSystemCapabilities.GetApfsLibrarySearchHint()
+                + "\n\nSee Source/DiskSeer/Docs/LIBFSAPFS_BUILD.md.");
+        }
+
+        var apfs = ApfsFileSystem.Open(partitionStream, progress, cancellationToken);
         if (apfs == null)
-            throw new IOException("Failed to open APFS container.");
+        {
+            throw new IOException("Failed to open APFS container. The volume may be encrypted, unsupported, or damaged.");
+        }
+
         return apfs;
     }
 
     /// <summary>
-    /// Opens a partition in read-only mode.
+    /// Searches for entries whose names contain <paramref name="query"/> under <paramref name="rootPath"/>.
     /// </summary>
-    public bool OpenPartitionReadOnly(int driveIndex, int partitionIndex)
+    public async Task<IReadOnlyList<FileSystemEntry>> SearchAsync(
+        string rootPath,
+        string query,
+        bool recursive,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        CloseCurrentPartition();
-
-        try
+        if (_currentFileSystem == null || string.IsNullOrWhiteSpace(query))
         {
-            string diskPath = $@"\\.\PhysicalDrive{driveIndex}";
-            _currentDisk = new Disk(diskPath, FileAccess.Read);
-
-            if (_currentDisk.Partitions == null || _currentDisk.Partitions.Count == 0)
-            {
-                _currentPartitionStream = _currentDisk.Content;
-            }
-            else if (partitionIndex < _currentDisk.Partitions.Count)
-            {
-                _currentPartitionStream = _currentDisk.Partitions[partitionIndex].Open();
-            }
-            else
-            {
-                throw new ArgumentOutOfRangeException(nameof(partitionIndex));
-            }
-
-            var fsType = DetectFileSystemType(_currentPartitionStream);
-            _currentPartitionStream.Position = 0;
-
-            _currentFileSystem = fsType switch
-            {
-                ForeignFileSystemType.Ext2 or
-                ForeignFileSystemType.Ext3 or
-                ForeignFileSystemType.Ext4 => new DiscUtilsAdapter(new ExtFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.HfsPlus => new DiscUtilsAdapter(new HfsPlusFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.Btrfs => new DiscUtilsAdapter(new BtrfsFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.Xfs => new DiscUtilsAdapter(new XfsFileSystem(_currentPartitionStream)),
-                ForeignFileSystemType.Apfs => OpenApfsOrThrow(_currentPartitionStream),
-                _ => throw new NotSupportedException($"File system type {fsType} is not supported.")
-            };
-
-            return true;
+            return [];
         }
-        catch
+
+        return await Task.Run(() =>
         {
-            CloseCurrentPartition();
-            return false;
-        }
+            var results = new List<FileSystemEntry>();
+            void Visit(string path)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(path);
+                foreach (var entry in GetDirectoryContents(path))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    {
+                        results.Add(entry);
+                    }
+
+                    if (recursive && entry.IsDirectory)
+                    {
+                        Visit(entry.FullPath);
+                    }
+                }
+            }
+
+            Visit(rootPath);
+            return (IReadOnlyList<FileSystemEntry>)results;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -968,6 +1013,8 @@ public sealed class ForeignDriveService : IDisposable
     /// </summary>
     public void CloseCurrentPartition()
     {
+        _currentFileSystemType = ForeignFileSystemType.Unknown;
+        _openedReadOnly = true;
         if (_currentFileSystem is IDisposable disposableFs)
         {
             try { disposableFs.Dispose(); }

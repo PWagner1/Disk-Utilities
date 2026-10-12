@@ -19,16 +19,28 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0" Spacing="4">
+            <Border x:Name="ElevationBanner" Grid.Row="0" Visibility="Collapsed" Margin="0,0,0,4">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ElevationBannerText" Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <Button x:Name="RestartAsAdminButton" Grid.Column="1" Content="Restart as administrator" VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Spacing="4">
                 <TextBlock Text="Find which processes have handles open to a file, folder, or drive. Enter a path, select a drive, or browse."
                            TextWrapping="Wrap" Opacity="0.8" />
             </StackPanel>
 
-            <StackPanel Grid.Row="1" Spacing="8">
+            <StackPanel Grid.Row="2" Spacing="8">
                 <TextBlock Text="Drive, file, or folder path" FontWeight="SemiBold" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ComboBox x:Name="DriveCombo"
@@ -49,10 +61,23 @@
                         </Button.Flyout>
                     </Button>
                     <Button x:Name="FindButton" Content="Find handles" Click="FindButton_Click" />
+                    <ToggleButton x:Name="WatchToggle" Content="Watch until clear" Click="WatchToggle_Click"
+                                  ToolTipService.ToolTip="Re-scan until no handles remain (GUI complement to --wait)" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox x:Name="ProcessFilterBox" PlaceholderText="Filter process name" Width="160"
+                             TextChanged="Filter_Changed" />
+                    <TextBox x:Name="PidFilterBox" PlaceholderText="Filter PID" Width="100"
+                             TextChanged="Filter_Changed" />
+                    <ComboBox x:Name="TypeFilterCombo" Width="140" SelectionChanged="Filter_Changed">
+                        <ComboBoxItem Content="All types" Tag="all" IsSelected="True" />
+                        <ComboBoxItem Content="File" Tag="file" />
+                        <ComboBoxItem Content="Other" Tag="other" />
+                    </ComboBox>
                 </StackPanel>
             </StackPanel>
 
-            <Border Grid.Row="2" BorderBrush="Gray" BorderThickness="1" Padding="12" CornerRadius="4" MinHeight="200">
+            <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" Padding="12" CornerRadius="4" MinHeight="200">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -61,12 +86,12 @@
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                         <TextBlock Text="Processes locking this path" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <Button x:Name="ReloadButton" Content="Reload" Click="ReloadButton_Click" ToolTipService.ToolTip="Re-scan the current path" />
-                        <Button x:Name="CloseHandleButton" Content="Close handle" Click="CloseHandleButton_Click" IsEnabled="False" />
+                        <Button x:Name="CloseHandleButton" Content="Close handle(s)" Click="CloseHandleButton_Click" IsEnabled="False" />
                         <Button x:Name="EndProcessButton" Content="End process" Click="EndProcessButton_Click" IsEnabled="False" />
                     </StackPanel>
                     <ListView Grid.Row="1"
                               x:Name="HandlesList"
-                              SelectionMode="Single"
+                              SelectionMode="Multiple"
                               SelectionChanged="HandlesList_SelectionChanged">
                         <ListView.HeaderTemplate>
                             <DataTemplate>
@@ -103,8 +128,12 @@
                                             <Run Text="{x:Bind HandleValue, Mode=OneTime}"/>
                                         </TextBlock>
                                         <TextBlock>
+                                            <Run Text="Type: " FontWeight="SemiBold"/>
+                                            <Run Text="{x:Bind ObjectTypeName, Mode=OneTime}"/>
+                                        </TextBlock>
+                                        <TextBlock TextWrapping="Wrap">
                                             <Run Text="Access: " FontWeight="SemiBold"/>
-                                            <Run Text="{x:Bind GrantedAccess, Mode=OneTime}"/>
+                                            <Run Text="{x:Bind AccessDisplay, Mode=OneTime}"/>
                                         </TextBlock>
                                         <TextBlock Text="{x:Bind Path}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxLines="3"/>
                                     </StackPanel>
@@ -115,7 +144,7 @@
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="3" Spacing="8">
+            <StackPanel Grid.Row="4" Spacing="8">
                 <ProgressBar x:Name="ProgressBar" IsIndeterminate="True" Visibility="Collapsed" />
                 <TextBlock x:Name="StatusText" Text="" TextWrapping="Wrap" />
             </StackPanel>

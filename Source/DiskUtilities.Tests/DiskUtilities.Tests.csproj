@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>DiskUtilities.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Exe</OutputType>
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
+    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+    <EnableDefaultPriItems>false</EnableDefaultPriItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiskUtilities.Shared\DiskUtilities.Shared.csproj" />
+    <ProjectReference Include="..\DiskHealth\DiskHealth.csproj" />
+    <ProjectReference Include="..\DiskEraser\DiskEraser.csproj" />
+    <ProjectReference Include="..\HandleFinder\HandleFinder.csproj" />
+    <ProjectReference Include="..\DriveStat\DriveStat.csproj" />
+    <ProjectReference Include="..\DiskSeer\DiskSeer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Multiple WinUI apps each ship MainWindow.xbf; skip PRI merge for the test host. -->
+  <Target Name="GenerateProjectPriFile" />
+  <Target Name="_GenerateProjectPriFileCore" />
+
+</Project>

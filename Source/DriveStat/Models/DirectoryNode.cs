@@ -26,8 +26,17 @@ public sealed class DirectoryNode
     /// <summary>Parent node. Null for root.</summary>
     public DirectoryNode? Parent { get; }
 
+    /// <summary>True when this directory is a junction/symlink/mount point and was not descended into.</summary>
+    public bool IsReparsePoint { get; init; }
+
+    /// <summary>True when this file is an additional hard link; size was already counted elsewhere in the tree.</summary>
+    public bool IsHardLinkDuplicate { get; init; }
+
     /// <summary>Formatted size for display.</summary>
-    public string FormattedSize => FormatSize(Size);
+    public string FormattedSize =>
+        IsHardLinkDuplicate ? $"{FormatSize(Size)} (link)" :
+        IsReparsePoint ? $"{FormatSize(Size)} (link)" :
+        FormatSize(Size);
 
     public DirectoryNode(string name, string fullPath, long size, bool isDirectory, DirectoryNode? parent)
     {

@@ -1,3 +1,5 @@
+using HandleFinder.Services;
+
 namespace HandleFinder.Models;
 
 /// <summary>
@@ -22,4 +24,14 @@ public sealed class HandleInfo
 
     /// <summary>Access rights granted on the handle.</summary>
     public uint GrantedAccess { get; init; }
+
+    /// <summary>Friendly object type label for filtering/display.</summary>
+    public string ObjectTypeName => ObjectTypeIndex switch
+    {
+        28 => "File",
+        _ => $"Type {ObjectTypeIndex}"
+    };
+
+    /// <summary>Human-readable access mask (hex + decoded bits).</summary>
+    public string AccessDisplay => AccessRightsFormatter.Format(GrantedAccess);
 }
