@@ -1,3 +1,16 @@
 <Project>
-  <!-- Reserved for suite-wide targets (post-csproj). App output paths are set in Directory.Build.props. -->
+  <!--
+    Each WinUI app must keep its own output folder. A shared folder overwrites App.xbf,
+    MainWindow.xbf, and resources.pri, so every app except the last one built fails to start.
+    Layout: bin\<platform>\<config>\<tfm>\<AppName>\<AppName>.exe
+    DiskUtilities.Shared and test projects keep their project-local output.
+  -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' != 'DiskUtilities.Shared' and !$(MSBuildProjectName.EndsWith('Tests')) and !$(OutputPath.EndsWith('$(MSBuildProjectName)\'))">
+    <OutputPath>$(OutputPath)$(MSBuildProjectName)\</OutputPath>
+    <OutDir>$(OutputPath)</OutDir>
+    <TargetDir>$(OutDir)</TargetDir>
+    <!-- TargetPath and ProjectPriFullPath are expanded from the earlier TargetDir, so references and PRI generation still use the shared folder unless they are rewritten. -->
+    <TargetPath>$(TargetDir)$(TargetFileName)</TargetPath>
+    <ProjectPriFullPath Condition="'$(ProjectPriFileName)' != ''">$(TargetDir)$(ProjectPriFileName)</ProjectPriFullPath>
+  </PropertyGroup>
 </Project>

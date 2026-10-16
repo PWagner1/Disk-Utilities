@@ -17,10 +17,10 @@ Do not re-introduce empty `Package.appxmanifest` files without a complete MSIX a
 
 Tag `vX.Y.Z` → workflow uploads:
 
-- `DiskUtilities-win-x64.zip` — suite binaries (`SuiteLauncher.exe` + tools)
+- `DiskUtilities-win-x64.zip` — suite binaries (one folder per app; start `SuiteLauncher\SuiteLauncher.exe`)
 - `SHA256SUMS.txt` — checksum for the zip
 
-Install layout after extract: run `SuiteLauncher.exe` (optional: Install Explorer menus).
+Install layout after extract: run `SuiteLauncher\SuiteLauncher.exe` (optional: Install Explorer menus).
 
 ## Fill manifests for a release
 

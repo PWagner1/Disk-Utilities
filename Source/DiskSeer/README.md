@@ -29,4 +29,4 @@ dotnet build DiskSeer\DiskSeer.csproj -c Debug -p:Platform=x64
 dotnet run --project DiskSeer -p:Platform=x64
 ```
 
-Output: `bin\x64\Debug\net10.0-windows10.0.19041.0\DiskSeer.exe` (repo root).
+Output: `bin\x64\Debug\net10.0-windows10.0.19041.0\DiskSeer\DiskSeer.exe` (repo root).

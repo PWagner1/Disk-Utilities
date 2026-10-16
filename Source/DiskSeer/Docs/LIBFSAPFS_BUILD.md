@@ -7,7 +7,7 @@ DiskSeer can **detect** APFS volumes without extra DLLs. **Browsing** APFS requi
 1. Build or obtain `libfsapfs-1.dll` and its dependency DLLs (libcdata, libcerror, libcpath, …).
 2. Copy them into the DiskSeer output folder, for example:
 
-   `bin\x64\Debug\net10.0-windows10.0.19041.0\`
+   `bin\x64\Debug\net10.0-windows10.0.19041.0\DiskSeer\`
 
    (same folder as `DiskSeer.exe`).
 3. Restart DiskSeer. The partition list should drop the `[needs libfsapfs]` suffix, and **Open** should work.

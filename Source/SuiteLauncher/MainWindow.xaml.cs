@@ -69,7 +69,7 @@ public sealed partial class MainWindow : Window
         string? ds = SuiteApps.ResolveExecutablePath(SuiteAppId.DriveStat);
         if (hf == null || ds == null)
         {
-            FooterStatus.Text = "Build HandleFinder and DriveStat into this folder first.";
+            FooterStatus.Text = "Build HandleFinder and DriveStat first.";
             return;
         }
 
@@ -132,7 +132,7 @@ public sealed partial class MainWindow : Window
                 Description = app.ShortDescription,
                 ElevationHint = app.ElevationHint,
                 RelatedHint = related,
-                StatusText = path == null ? $"Not found beside launcher (build {app.ExeFileName} into the same folder)." : string.Empty,
+                StatusText = path == null ? $"Not found (build {app.ExeFileName} into its own folder under the suite output)." : string.Empty,
                 ElevateVisible = ElevationHelper.IsElevated
                     ? Visibility.Collapsed
                     : Visibility.Visible
@@ -188,7 +188,7 @@ public sealed partial class MainWindow : Window
         bool ok = SuiteApps.TryLaunch(id, elevated: elevated);
         FooterStatus.Text = ok
             ? $"Started {SuiteApps.Get(id)?.DisplayName ?? id.ToString()}{(elevated ? " (elevated)" : string.Empty)}."
-            : $"Could not start {id}. Build the suite so executables share one output folder, then retry.";
+            : $"Could not start {id}. Build the suite so each app has its own output folder, then retry.";
         if (!ok)
         {
             RefreshAppList();

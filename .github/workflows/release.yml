@@ -48,7 +48,7 @@ jobs:
         with:
           generate_release_notes: true
           body: |
-            Unpackaged x64 suite zip. Run `SuiteLauncher.exe`.
+            Unpackaged x64 suite zip. Run `SuiteLauncher\SuiteLauncher.exe`.
 
             Distribution helpers (winget / Scoop / Chocolatey templates): see `packaging/README.md`.
             After publishing this release, generate filled manifests with:

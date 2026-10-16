@@ -85,7 +85,7 @@ Run the executable:
 
 ```powershell
 # From repo root (BaseOutputPath writes under bin\)
-.\bin\x64\Debug\net10.0-windows10.0.19041.0\HandleFinder.exe
+.\bin\x64\Debug\net10.0-windows10.0.19041.0\HandleFinder\HandleFinder.exe
 ```
 
 > **Important**: Always run as Administrator. Right-click the executable and choose "Run as administrator," or use an elevated command prompt.

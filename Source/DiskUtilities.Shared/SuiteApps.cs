@@ -24,7 +24,7 @@ public sealed record SuiteAppInfo(
     IReadOnlyList<SuiteAppId> RelatedApps);
 
 /// <summary>
-/// Resolves and starts suite executables from the shared output folder (or beside the current process).
+/// Resolves and starts suite executables from each app's output folder (or beside the current process).
 /// </summary>
 public static class SuiteApps
 {
@@ -71,9 +71,26 @@ public static class SuiteApps
     public static SuiteAppInfo? Get(SuiteAppId id) => All.FirstOrDefault(a => a.Id == id);
 
     /// <summary>
-    /// Resolves the full path to an app exe beside this process, or under the usual repo/bin layout.
+    /// Resolves the full path to an app exe beside this process, in a sibling app folder, or under the usual repo/bin layout.
     /// </summary>
-    public static string? ResolveExecutablePath(SuiteAppId id)
+    public static string? ResolveExecutablePath(SuiteAppId id) =>
+        ResolveExecutablePath(id, CurrentProcessDirectories());
+
+    /// <summary>
+    /// Resolves an app exe relative to <paramref name="processDirectory"/> without inspecting the current process.
+    /// Checks the same folder, <c>{dir}\{App}\{App}.exe</c>, <c>{dir}\..\{App}\{App}.exe</c>, then a <c>bin\</c> tree above that directory.
+    /// </summary>
+    public static string? ResolveExecutablePath(SuiteAppId id, string? processDirectory)
+    {
+        if (string.IsNullOrEmpty(processDirectory))
+        {
+            return null;
+        }
+
+        return ResolveExecutablePath(id, (string[])[processDirectory]);
+    }
+
+    private static string? ResolveExecutablePath(SuiteAppId id, IEnumerable<string> processDirectories)
     {
         SuiteAppInfo? info = Get(id);
         if (info == null)
@@ -81,53 +98,7 @@ public static class SuiteApps
             return null;
         }
 
-        string exe = info.ExeFileName;
-        var candidates = new List<string>();
-
-        string? processDir = Path.GetDirectoryName(Environment.ProcessPath);
-        if (!string.IsNullOrEmpty(processDir))
-        {
-            candidates.Add(Path.Combine(processDir, exe));
-        }
-
-        try
-        {
-            string? module = Process.GetCurrentProcess().MainModule?.FileName;
-            string? moduleDir = Path.GetDirectoryName(module);
-            if (!string.IsNullOrEmpty(moduleDir))
-            {
-                candidates.Add(Path.Combine(moduleDir, exe));
-            }
-        }
-        catch
-        {
-            // ignore
-        }
-
-        // Walk up looking for bin\<platform>\<config>\net*\Exe
-        string? dir = processDir;
-        for (int i = 0; i < 6 && !string.IsNullOrEmpty(dir); i++)
-        {
-            string binRoot = Path.Combine(dir, "bin");
-            if (Directory.Exists(binRoot))
-            {
-                try
-                {
-                    foreach (string found in Directory.EnumerateFiles(binRoot, exe, SearchOption.AllDirectories))
-                    {
-                        candidates.Add(found);
-                    }
-                }
-                catch
-                {
-                    // ignore
-                }
-            }
-
-            dir = Path.GetDirectoryName(dir);
-        }
-
-        foreach (string path in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (string path in EnumerateCandidatePaths(info.ExeFileName, processDirectories))
         {
             if (File.Exists(path))
             {
@@ -136,6 +107,101 @@ public static class SuiteApps
         }
 
         return null;
+    }
+
+    /// <summary>Candidate exe paths for <paramref name="exeFileName"/>, in preference order. Does not check that the file exists.</summary>
+    internal static IEnumerable<string> EnumerateCandidatePaths(string exeFileName, IEnumerable<string> processDirectories)
+    {
+        string appFolder = Path.GetFileNameWithoutExtension(exeFileName);
+        var dirs = new List<string>();
+        foreach (string dir in processDirectories)
+        {
+            if (string.IsNullOrEmpty(dir))
+            {
+                continue;
+            }
+
+            if (!dirs.Contains(dir, StringComparer.OrdinalIgnoreCase))
+            {
+                dirs.Add(dir);
+            }
+        }
+
+        var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string dir in dirs)
+        {
+            foreach (string candidate in new[]
+            {
+                Path.Combine(dir, exeFileName),
+                Path.Combine(dir, appFolder, exeFileName),
+                Path.GetFullPath(Path.Combine(dir, "..", appFolder, exeFileName))
+            })
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        foreach (string start in dirs)
+        {
+            string? dir = start;
+            for (int i = 0; i < 6 && !string.IsNullOrEmpty(dir); i++)
+            {
+                string binRoot = Path.Combine(dir, "bin");
+                if (Directory.Exists(binRoot))
+                {
+                    List<string> found;
+                    try
+                    {
+                        found = Directory.EnumerateFiles(binRoot, exeFileName, SearchOption.AllDirectories).ToList();
+                    }
+                    catch
+                    {
+                        found = [];
+                    }
+
+                    foreach (string path in found.OrderByDescending(path =>
+                        string.Equals(
+                            Path.GetFileName(Path.GetDirectoryName(path)),
+                            appFolder,
+                            StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (yielded.Add(path))
+                        {
+                            yield return path;
+                        }
+                    }
+                }
+
+                dir = Path.GetDirectoryName(dir);
+            }
+        }
+    }
+
+    private static IEnumerable<string> CurrentProcessDirectories()
+    {
+        string? processDir = Path.GetDirectoryName(Environment.ProcessPath);
+        if (!string.IsNullOrEmpty(processDir))
+        {
+            yield return processDir;
+        }
+
+        string? moduleDir = null;
+        try
+        {
+            moduleDir = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule?.FileName);
+        }
+        catch
+        {
+            // ignore
+        }
+
+        if (!string.IsNullOrEmpty(moduleDir))
+        {
+            yield return moduleDir;
+        }
     }
 
     /// <summary>Starts a suite app. Returns false if the exe is missing or start fails.</summary>
@@ -148,10 +214,12 @@ public static class SuiteApps
             return false;
         }
 
+        string? workDir = Path.GetDirectoryName(path);
         var startInfo = new ProcessStartInfo
         {
             FileName = path,
-            UseShellExecute = true
+            UseShellExecute = true,
+            WorkingDirectory = string.IsNullOrEmpty(workDir) ? string.Empty : workDir
         };
         if (elevated)
         {

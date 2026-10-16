@@ -31,7 +31,7 @@ dotnet run --project DriveStat -p:Platform=x64
 
 Executable output (repo root):
 
-`bin\x64\Debug\net10.0-windows10.0.19041.0\DriveStat.exe`
+`bin\x64\Debug\net10.0-windows10.0.19041.0\DriveStat\DriveStat.exe`
 
 ## Requirements
 

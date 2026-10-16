@@ -29,7 +29,7 @@ dotnet build DiskHealth\DiskHealth.csproj -c Debug -p:Platform=x64
 dotnet run --project DiskHealth -p:Platform=x64
 ```
 
-Executable: `bin\x64\Debug\net10.0-windows10.0.19041.0\DiskHealth.exe` (repo root).
+Executable: `bin\x64\Debug\net10.0-windows10.0.19041.0\DiskHealth\DiskHealth.exe` (repo root).
 
 ## Related
 

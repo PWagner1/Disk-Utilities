@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/) where ver
 
 ### Fixed
 
+- **Suite launch:** each WinUI app builds into its own folder (`bin\<platform>\<config>\<tfm>\<App>\`) so `App.xbf`, `MainWindow.xbf`, and `resources.pri` are not overwritten by the next project. SuiteLauncher starts sibling folders.
 - **DiskEraser:** `NormalizeLetter` now treats `C:\` / `C/` as the protected system volume (previously appended a stray `:`)
 
 ### Changed

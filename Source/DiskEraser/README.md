@@ -55,7 +55,7 @@ Or open `Source/Disk Utilities.sln`, set **DiskEraser** as startup, platform **x
 
 Executable output (repo root):
 
-`bin\x64\Debug\net10.0-windows10.0.19041.0\DiskEraser.exe`
+`bin\x64\Debug\net10.0-windows10.0.19041.0\DiskEraser\DiskEraser.exe`
 
 ## Safety
 

@@ -19,7 +19,7 @@
     <DiscUtilsVersion>0.16.13</DiscUtilsVersion>
   </PropertyGroup>
 
-  <!-- Suite apps share repo-root bin\; shared library and tests keep project-local defaults unless overridden -->
+  <!-- Suite apps write under repo-root bin\<platform>\<config>\<tfm>\<App>\; shared library and tests stay project-local -->
   <PropertyGroup Condition="'$(MSBuildProjectName)' != 'DiskUtilities.Shared' and !$(MSBuildProjectName.EndsWith('Tests'))">
     <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
     <WindowsAppSDKSelfContained Condition="'$(WindowsAppSDKSelfContained)' == ''">true</WindowsAppSDKSelfContained>
