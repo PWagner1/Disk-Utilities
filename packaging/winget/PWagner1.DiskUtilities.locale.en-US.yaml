@@ -14,7 +14,7 @@ ShortDescription: WinUI suite for disk format, health, foreign FS, usage, and ha
 Description: |-
   Disk Utilities is an unpackaged WinUI 3 suite for Windows 10/11:
   SuiteLauncher, DiskEraser, DiskHealth, DiskSeer, DriveStat, and HandleFinder.
-  Install the portable zip and run SuiteLauncher.exe. Some tools require Administrator.
+  Install the portable zip and run SuiteLauncher\SuiteLauncher.exe. Some tools require Administrator.
 Moniker: disk-utilities
 Tags:
   - disk

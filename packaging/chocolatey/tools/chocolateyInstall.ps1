@@ -15,7 +15,7 @@ $packageArgs = @{
 
 Install-ChocolateyZipPackage @packageArgs
 
-$launcher = Join-Path $toolsDir 'SuiteLauncher.exe'
+$launcher = Join-Path $toolsDir 'SuiteLauncher\SuiteLauncher.exe'
 if (Test-Path $launcher) {
   Install-ChocolateyShortcut -ShortcutFilePath (
     Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Disk Utilities.lnk'

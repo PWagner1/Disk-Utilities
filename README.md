@@ -36,7 +36,7 @@ dotnet run --project SuiteLauncher -p:Platform=x64
 # or DiskEraser / DiskHealth / DiskSeer / DriveStat / HandleFinder
 ```
 
-Binaries are written under `bin\<platform>\<config>\net10.0-windows10.0.19041.0\` at the repo root.
+Binaries are written under `bin\<platform>\<config>\net10.0-windows10.0.19041.0\<App>\<App>.exe` at the repo root. Each app has its own folder so WinUI XAML resources are not overwritten.
 
 Tagged releases (`v*`) build a x64 zip (+ `SHA256SUMS.txt`) via `.github/workflows/release.yml`.  
 winget / Scoop / Chocolatey / optional Inno templates live in [`packaging/`](packaging/README.md).

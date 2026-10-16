@@ -5,7 +5,7 @@ InstallerLocale: en-US
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
-  - RelativeFilePath: SuiteLauncher.exe
+  - RelativeFilePath: SuiteLauncher\SuiteLauncher.exe
     PortableCommandAlias: disk-utilities
 UpgradeBehavior: uninstallPrevious
 Installers:

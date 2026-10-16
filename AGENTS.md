@@ -31,12 +31,12 @@ Docs: root [README.md](README.md), [Source/README.md](Source/README.md), per-app
 
 ```powershell
 cd Source
-dotnet build "Disk Utilities.sln" -c Debug -p:Platform=x64 -m:1
-dotnet test DiskUtilities.Tests -c Debug -p:Platform=x64 -m:1
+dotnet build "Disk Utilities.sln" -c Debug -p:Platform=x64
+dotnet test DiskUtilities.Tests -c Debug -p:Platform=x64
 dotnet run --project DiskEraser -p:Platform=x64
 ```
 
-Binaries: `bin\<platform>\<config>\net10.0-windows10.0.19041.0\` at the repo root. Prefer `-m:1` when building multiple WinUI apps (shared `bin\` `.xbf` race).
+Binaries: `bin\<platform>\<config>\net10.0-windows10.0.19041.0\<App>\<App>.exe` at the repo root. Each WinUI app has its own folder so `App.xbf` and `resources.pri` are not overwritten.
 
 Prefer Visual Studio if CLI XamlCompiler fails. Do not commit `obj/`, `.vs/`, or build outputs under `bin/`.
 

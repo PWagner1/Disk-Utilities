@@ -10,15 +10,15 @@
     }
   },
   "bin": [
-    "SuiteLauncher.exe",
+    "SuiteLauncher/SuiteLauncher.exe",
     [
-      "HandleFinder.exe",
+      "HandleFinder/HandleFinder.exe",
       "handlefinder"
     ]
   ],
   "shortcuts": [
     [
-      "SuiteLauncher.exe",
+      "SuiteLauncher/SuiteLauncher.exe",
       "Disk Utilities"
     ]
   ],

@@ -445,7 +445,7 @@ public sealed partial class MainWindow : Window
 
         if (!SuiteApps.TryLaunchHandleFinderGui(dn.FullPath))
         {
-            StatusText.Text = "Could not start HandleFinder. Build the suite into the same output folder.";
+            StatusText.Text = "Could not start HandleFinder. Build the suite so each app has its own output folder.";
             return;
         }
 

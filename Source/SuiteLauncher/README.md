@@ -1,6 +1,6 @@
 # SuiteLauncher
 
-WinUI 3 entry point for the **Disk Utilities** suite. Lists the five tools with short descriptions and elevation hints, seeds suite theme / destructive-prompt preference, and launches sibling executables from the shared `bin\` output folder.
+WinUI 3 entry point for the **Disk Utilities** suite. Lists the five tools with short descriptions and elevation hints, seeds suite theme / destructive-prompt preference, and launches the other apps from their sibling output folders.
 
 ## Features
 
@@ -15,13 +15,13 @@ WinUI 3 entry point for the **Disk Utilities** suite. Lists the five tools with 
 
 ```powershell
 cd Source
-dotnet build SuiteLauncher\SuiteLauncher.csproj -c Debug -p:Platform=x64 -m:1
+dotnet build SuiteLauncher\SuiteLauncher.csproj -c Debug -p:Platform=x64
 dotnet run --project SuiteLauncher -p:Platform=x64
 ```
 
-Build the other apps into the same output folder so Launch can find them:
+Build the other apps so Launch can find them next to the launcher:
 
-`bin\x64\Debug\net10.0-windows10.0.19041.0\`
+`bin\x64\Debug\net10.0-windows10.0.19041.0\SuiteLauncher\SuiteLauncher.exe`
 
 ## Related
 

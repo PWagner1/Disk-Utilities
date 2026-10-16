@@ -80,7 +80,7 @@ Or open `Source/Disk Utilities.sln` in Visual Studio and press F5.
 
 Output binaries land under the repo-root `bin\` folder (see each project’s `BaseOutputPath`), for example:
 
-`bin\x64\Debug\net10.0-windows10.0.19041.0\<AppName>.exe`
+`bin\x64\Debug\net10.0-windows10.0.19041.0\<AppName>\<AppName>.exe`
 
 ## DiskEraser – Free-space overwrite
 
@@ -168,7 +168,7 @@ Projects are configured as **unpackaged** (`WindowsPackageType=None`) for simple
 
 ```powershell
 cd Source
-dotnet test DiskUtilities.Tests -c Debug -p:Platform=x64 -m:1
+dotnet test DiskUtilities.Tests -c Debug -p:Platform=x64
 ```
 
-Use `-m:1` so WinUI apps that share `bin\` do not race on `.xbf` outputs. CI runs the same build/test matrix (x64 Debug and Release) via `.github/workflows/ci.yml`.
+Each WinUI app builds into its own folder under `bin\`, so XAML outputs (`App.xbf`, `resources.pri`) stay with that app. CI runs the same build/test matrix (x64 Debug and Release) via `.github/workflows/ci.yml`.

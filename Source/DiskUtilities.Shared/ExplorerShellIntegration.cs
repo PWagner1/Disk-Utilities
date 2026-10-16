@@ -34,7 +34,7 @@ public static class ExplorerShellIntegration
     {
         if (!File.Exists(handleFinderExe) || !File.Exists(driveStatExe))
         {
-            message = "HandleFinder.exe and DriveStat.exe must exist (build the suite into one output folder).";
+            message = "HandleFinder.exe and DriveStat.exe must exist (build the suite so each app has its own output folder).";
             return false;
         }
 
