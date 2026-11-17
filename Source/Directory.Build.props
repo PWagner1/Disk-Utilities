@@ -15,7 +15,7 @@
     <!-- Central package versions (reference via $(PropertyName) in PackageReference) -->
     <WindowsAppSdkVersion>2.5.1</WindowsAppSdkVersion>
     <WindowsSdkBuildToolsVersion>10.0.28000.2705</WindowsSdkBuildToolsVersion>
-    <SystemManagementVersion>10.0.12</SystemManagementVersion>
+    <SystemManagementVersion>11.0.0</SystemManagementVersion>
     <DiscUtilsVersion>0.16.13</DiscUtilsVersion>
   </PropertyGroup>
 
